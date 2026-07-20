@@ -1,7 +1,7 @@
 # Base compose file — generic, no environment-specific defaults.
 # Use with an environment override file:
 #
-#   docker-compose -f docker-compose.yml -f docker-compose.int.yml up
+#   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 #   docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml gh-runner-prod
 #
 # Local:

@@ -19,10 +19,10 @@ Commands:
   help        Show this help message
 
 Options:
-  -s, --stack   NAME   Stack name (e.g. gh-runner-int)          [required for most commands]
+  -s, --stack   NAME   Stack name (e.g. gh-runner-dev)          [required for most commands]
   -e, --env-file FILE  Path to the env file (e.g. ../../runner.env)
   -c, --compose  FILE  Path to the base compose file
-  -o, --override FILE  Path to the environment override file (e.g. docker-compose.int.yml)
+  -o, --override FILE  Path to the environment override file (e.g. docker-compose.dev.yml)
   -y, --yes            Skip confirmation prompt (used with remove)
   -h, --help           Show this help message
 
@@ -139,7 +139,7 @@ case "$CMD" in
 
   scale)
     require_stack
-    [[ -n "${2:-}" ]] || { echo "Error: specify replica count e.g. $(basename "$0") scale -s gh-runner-int 5"; exit 1; }
+    [[ -n "${2:-}" ]] || { echo "Error: specify replica count e.g. $(basename "$0") scale -s gh-runner-dev 5"; exit 1; }
     docker service scale "${STACK}_runner=$2"
     echo "Scaled ${STACK}_runner to $2 replica(s)"
     ;;

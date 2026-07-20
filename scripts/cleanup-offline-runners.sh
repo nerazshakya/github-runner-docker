@@ -10,11 +10,11 @@
 #   ACCESS_TOKEN      — GitHub PAT with admin:org scope
 #   GITHUB_HOST       — e.g. github.example.com
 #   ORG_NAME          — e.g. your-org
-#   RUNNER_NAME_BASE  — base name prefix e.g. link-azure-int
+#   RUNNER_NAME_BASE  — base name prefix e.g. runner-dev
 #
 # Standalone usage:
 #   ENV_FILE=/deployment/GitHub/runner.env \
-#   RUNNER_NAME_BASE=link-azure-int \
+#   RUNNER_NAME_BASE=runner-dev \
 #   ./cleanup-offline-runners.sh
 
 set -euo pipefail

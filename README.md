@@ -23,7 +23,7 @@ meaning `docker stack deploy` from a job actually deploys to your real Swarm.
 ├── docker/
 │   ├── Dockerfile                      # Image (Debian 12-slim + runner binary + Docker CLI)
 │   ├── docker-compose.yml              # Base compose — generic, reads from runner.env
-│   ├── docker-compose.int.yml          # INT override — labels, replicas, placement
+│   ├── docker-compose.dev.yml          # DEV override — labels, replicas, placement
 │   ├── docker-compose.uat.yml          # UAT override
 │   └── docker-compose.prod.yml         # PROD override
 │
@@ -104,17 +104,17 @@ env file loading automatically.
 ```bash
 # Dry run first — see the resolved config and exact command without deploying
 ./deploy.sh dry-run \
-  -s gh-runner-int \
+  -s gh-runner-dev \
   -e /deployment/GitHub/runner.env \
   -c docker/docker-compose.yml \
-  -o docker/docker-compose.int.yml
+  -o docker/docker-compose.de .yml
 
 # Deploy
 ./deploy.sh deploy \
-  -s gh-runner-int \
+  -s gh-runner-dev \
   -e /deployment/GitHub/runner.env \
   -c docker/docker-compose.yml \
-  -o docker/docker-compose.int.yml
+  -o docker/docker-compose.dev.yml
 
 # UAT
 ./deploy.sh deploy \
@@ -151,17 +151,17 @@ manager node to handle concurrent jobs:
 
 ```bash
 # Scale up for heavy load periods
-./deploy.sh scale -s gh-runner-int 5
+./deploy.sh scale -s gh-runner-dev 5
 
 # Scale back down
-./deploy.sh scale -s gh-runner-int 2
+./deploy.sh scale -s gh-runner-dev 2
 ```
 
 All replicas are pinned to the manager node (where `/deployment` lives).
-Each gets a unique name via a random suffix (`link-azure-int-a1b2c3`,
-`link-azure-int-x9y8z7`) — so they never collide on registration.
+Each gets a unique name via a random suffix (`runner-dev-a1b2c3`,
+`runner-dev-x9y8z7`) — so they never collide on registration.
 
-Default replica count per environment: `docker-compose.int.yml` → 3,
+Default replica count per environment: `docker-compose.dev.yml` → 3,
 `docker-compose.uat.yml` → 2, `docker-compose.prod.yml` → 3.
 
 ### Health Checks
@@ -178,11 +178,11 @@ restarts.
 
 ```bash
 # Follow live logs
-./deploy.sh logs -s gh-runner-int
+./deploy.sh logs -s gh-runner-dev
 
 # Inspect persisted diagnostic logs
 docker run --rm \
-  -v gh-runner-int_runner-logs:/logs \
+  -v gh-runner-dev_runner-logs:/logs \
   alpine ls /logs
 ```
 
@@ -193,20 +193,20 @@ docker run --rm \
 Workflows targeting these runners use the environment-specific labels:
 
 ```yaml
-# INT
+# DEV
 jobs:
   deploy:
-    runs-on: [self-hosted, link, azure, int]
+    runs-on: [self-hosted, dev]
 
 # UAT
 jobs:
   deploy:
-    runs-on: [self-hosted, link, azure, uat]
+    runs-on: [self-hosted, uat]
 
 # PROD
 jobs:
   deploy:
-    runs-on: [self-hosted, link, azure, prod]
+    runs-on: [self-hosted, prod]
 ```
 
 GitHub matches jobs to runners by labels — runner name is irrelevant to
@@ -339,7 +339,7 @@ so runners clean up from GHES before the container dies.
 **Why is `RUNNER_NAME` always given a random suffix?**
 Multiple replicas of the same service on the same Swarm node would otherwise
 try to register under the identical name, causing a "session already exists"
-collision on GHES. The random suffix (`link-azure-int-a1b2c3`) makes every
+collision on GHES. The random suffix (`runner-dev-a1b2c3`) makes every
 container instance unique. Job routing uses labels, not names — so this has
 no effect on which runner picks up which job.
 

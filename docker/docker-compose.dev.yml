@@ -1,8 +1,8 @@
-# INT environment override.
+# DEV environment override.
 #
 # Usage:
-#   ./deploy.sh deploy -s gh-runner-int -e /deployment/GitHub/runner.env \
-#     -c docker/docker-compose.yml -o docker/docker-compose.int.yml
+#   ./deploy.sh deploy -s gh-runner-dev -e /deployment/GitHub/runner.env \
+#     -c docker/docker-compose.yml -o docker/docker-compose.dev.yml
 
 services:
   runner:
