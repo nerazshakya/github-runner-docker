@@ -1,0 +1,19 @@
+# UAT environment override.
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.uat.yml up
+#        docker stack deploy -c docker-compose.yml -c docker-compose.uat.yml gh-runner-uat
+
+services:
+  runner:
+    environment:
+      LABELS:      "uat"
+      RUNNER_NAME: "uat-runner"
+
+    deploy:
+      replicas: 2   
+      placement:
+        constraints:
+          - node.role == manager 
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3

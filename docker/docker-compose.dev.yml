@@ -1,0 +1,21 @@
+# INT environment override.
+#
+# Usage:
+#   ./deploy.sh deploy -s gh-runner-int -e /deployment/GitHub/runner.env \
+#     -c docker/docker-compose.yml -o docker/docker-compose.int.yml
+
+services:
+  runner:
+    environment:
+      LABELS:      "dev"
+      RUNNER_NAME: "dev-runner"
+
+    deploy:
+      replicas: 2   
+      placement:
+        constraints:
+          - node.role == manager 
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3

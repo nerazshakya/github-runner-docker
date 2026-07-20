@@ -1,0 +1,69 @@
+# Base compose file — generic, no environment-specific defaults.
+# Use with an environment override file:
+#
+#   docker-compose -f docker-compose.yml -f docker-compose.int.yml up
+#   docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml gh-runner-prod
+#
+# Local:
+#   REPO_URL=https://github.com/org/repo ACCESS_TOKEN=ghp_xxx docker-compose up
+
+version: "3.12"
+
+services:
+  runner:
+    # Set DOCKER_REGISTRY_URL as an env var when running this compose file
+    # e.g. DOCKER_REGISTRY_URL=yourcompany.jfrog.io docker-compose up
+    image: ${DOCKER_REGISTRY_URL}/my-org/github-runner:latest
+
+    environment:
+      # Auth: ACCESS_TOKEN (PAT) is recommended — token.sh fetches a fresh
+      # registration token on every start so expiry is never a problem.
+      # RUNNER_TOKEN is a fallback but expires in 1 hour.
+      ACCESS_TOKEN:     ${ACCESS_TOKEN:-}
+      RUNNER_TOKEN:     ${RUNNER_TOKEN:-}
+
+      # Scope: repo | org | enterprise  (provide the matching var below)
+      RUNNER_SCOPE:     ${RUNNER_SCOPE:-repo}
+      REPO_URL:         ${REPO_URL:-}           # repo scope
+      ORG_NAME:         ${ORG_NAME:-}           # org scope
+      ENTERPRISE_NAME:  ${ENTERPRISE_NAME:-}    # enterprise scope
+
+      # Optional
+      GITHUB_HOST:      ${GITHUB_HOST:-github.com}    # override for GHES
+      LABELS:           ${LABELS:-self-hosted,linux,docker}
+      RUNNER_GROUP:     ${RUNNER_GROUP:-Default}
+      RUNNER_NAME:      ${RUNNER_NAME:-}
+      EPHEMERAL:        "false"    # exit after one job if true;
+
+    # Socket mount — runner uses host Docker daemon directly.
+    # docker commands in jobs (docker build, docker stack deploy etc.)
+    # go through this socket and execute on the host.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock   # host Docker socket
+      - runner-work:/_work
+      - runner-logs:/actions-runner/_diag           # persists logs after container exits
+      - /deployment:/deployment   
+
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+    restart: on-failure:3
+
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: "2"
+          memory: 4G
+
+volumes:
+  runner-work:
+  runner-logs:
