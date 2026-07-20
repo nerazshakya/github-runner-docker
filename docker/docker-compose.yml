@@ -12,7 +12,7 @@ version: "3.12"
 services:
   runner:
     # Set DOCKER_REGISTRY_URL as an env var when running this compose file
-    # e.g. DOCKER_REGISTRY_URL=yourcompany.jfrog.io docker-compose up
+    # e.g. DOCKER_REGISTRY_URL=yourcompany.registy.io docker-compose up
     image: ${DOCKER_REGISTRY_URL}/my-org/github-runner:latest
 
     environment:

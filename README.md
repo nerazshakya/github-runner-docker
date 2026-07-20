@@ -2,7 +2,7 @@
 
 Custom Docker image for GitHub Actions self-hosted runners on Docker Swarm.
 Supports **github.com** and **GitHub Enterprise Server (GHES)**.
-Built and pushed to JFrog Artifactory via GitHub Actions.
+Built and pushed to Artifactory via GitHub Actions.
 
 Docker access uses a **host socket mount** — no Docker daemon inside the
 container. `docker` commands in jobs talk directly to the host's Docker daemon,
