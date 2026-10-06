@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+DEPLOY_BASE_PATH="${DEPLOY_BASE_PATH:-./env}"
+
 usage() { cat <<EOF
 GitHub Actions Runner � Stack Management
 
@@ -19,44 +21,44 @@ Commands:
   help        Show this help message
 
 Options:
-  -s, --stack   NAME   Stack name (e.g. gh-runner-dev)          [required for most commands]
-  -e, --env-file FILE  Path to the env file (e.g. ../../runner.env)
+  -s, --stack   NAME   Stack name (e.g. gh-runner)          [required for most commands]
+  -e, --env-file FILE  Path to the env file (default: $DEPLOY_BASE_PATH/runner.env)
   -c, --compose  FILE  Path to the base compose file
-  -o, --override FILE  Path to the environment override file (e.g. docker-compose.dev.yml)
+  -o, --override FILE  Path to the environment override file (e.g. docker-compose.int.yml)
   -y, --yes            Skip confirmation prompt (used with remove)
   -h, --help           Show this help message
 
 Examples:
-  # Deploy DEV runners
+  # Deploy INT runners
   $(basename "$0") deploy \\
     -s gh-runner \\
-    -e /deployment/GitHub/runner.env \\
+    -e "$DEPLOY_BASE_PATH/runner.env" \\
     -c docker/docker-compose.yml \\
-    -o docker/docker-compose.dev.yml
+    -o docker/docker-compose.int.yml
 
   # Dry run first to verify config
   $(basename "$0") dry-run \\
     -s gh-runner \\
-    -e /deployment/GitHub/runner.env \\
+    -e "$DEPLOY_BASE_PATH/runner.env" \\
     -c docker/docker-compose.yml \\
-    -o docker/docker-compose.dev.yml
+    -o docker/docker-compose.int.yml
 
   # Scale up to handle more concurrent jobs
-  $(basename "$0") scale -s gh-runner-dev 5
+  $(basename "$0") scale -s gh-runner 5
 
   # Check stack status
-  $(basename "$0") status -s gh-runner-dev
+  $(basename "$0") status -s gh-runner
 
   # Follow runner logs
-  $(basename "$0") logs -s gh-runner-dev
+  $(basename "$0") logs -s gh-runner
 
   # Remove stack without prompt
-  $(basename "$0") remove -s gh-runner-dev -y
+  $(basename "$0") remove -s gh-runner -y
 EOF
 }
 
 CMD="${1:-help}"; shift || true
-STACK=""; ENVF=""; COMP=""; OVR=""; YES=0
+STACK=""; ENVF="$DEPLOY_BASE_PATH/runner.env"; COMP=""; OVR=""; YES=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -71,7 +73,13 @@ while [[ $# -gt 0 ]]; do
 done
 
 load() {
-  [[ -n "$ENVF" ]] && { set -a; source "$ENVF"; set +a; }
+  [[ -n "$ENVF" ]] || return 0
+  if [[ ! -f "$ENVF" ]]; then
+    echo "Error: env file not found: $ENVF"
+    echo "  Run ./setup.sh first, or pass -e /path/to/runner.env"
+    exit 1
+  fi
+  set -a; source "$ENVF"; set +a
 }
 
 compose_args() {
@@ -139,7 +147,7 @@ case "$CMD" in
 
   scale)
     require_stack
-    [[ -n "${2:-}" ]] || { echo "Error: specify replica count e.g. $(basename "$0") scale -s gh-runner-dev 5"; exit 1; }
+    [[ -n "${2:-}" ]] || { echo "Error: specify replica count e.g. $(basename "$0") scale -s gh-runner 5"; exit 1; }
     docker service scale "${STACK}_runner=$2"
     echo "Scaled ${STACK}_runner to $2 replica(s)"
     ;;
