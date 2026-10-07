@@ -22,6 +22,12 @@ services:
       ACCESS_TOKEN:     ${ACCESS_TOKEN:-}
       RUNNER_TOKEN:     ${RUNNER_TOKEN:-}
 
+      # GitHub App auth (preferred over a PAT). When APP_ID is set it wins.
+      # The private key is NOT an env var: mount it as a Swarm secret, see the
+      # commented "secrets" blocks at the bottom of this file.
+      APP_ID:              ${APP_ID:-}
+      APP_INSTALLATION_ID: ${APP_INSTALLATION_ID:-}
+
       # Scope: repo | org | enterprise  (provide the matching var below)
       RUNNER_SCOPE:     ${RUNNER_SCOPE:-repo}
       REPO_URL:         ${REPO_URL:-}           # repo scope
@@ -33,14 +39,21 @@ services:
       LABELS:           ${LABELS:-self-hosted,linux,docker}
       RUNNER_GROUP:     ${RUNNER_GROUP:-Default}
       RUNNER_NAME:      ${RUNNER_NAME:-}
-      EPHEMERAL:        "false"    # exit after one job if true;
+      # EPHEMERAL: set per environment in the override files, NOT in runner.env
+      # (runner.env is shared by dev/uat/prod). true = take one job, deregister,
+      # exit; Swarm then starts a fresh container (needs restart_policy "any").
+      EPHEMERAL:            ${EPHEMERAL:-false}
+      DISABLE_AUTO_UPDATE:  ${DISABLE_AUTO_UPDATE:-false}
 
     # Socket mount — runner uses host Docker daemon directly.
     # docker commands in jobs (docker build, docker stack deploy etc.)
     # go through this socket and execute on the host.
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock   # host Docker socket
-      - runner-work:/_work
+      # No /_work volume on purpose. A named volume is shared by every replica
+      # of the service (they would trample each other's checkouts) and it
+      # carries one job's files into the next, which defeats ephemeral runners.
+      # /_work now lives in the container's own filesystem, fresh per container.
       - runner-logs:/actions-runner/_diag           # persists logs after container exits
       - /deployment:/deployment   
 
@@ -53,17 +66,33 @@ services:
 
     restart: on-failure:3
 
+    # Time for the SIGTERM trap to deregister before Docker sends SIGKILL.
+    stop_grace_period: 30s
+
     deploy:
       replicas: 1
+      # "any" is required for ephemeral runners: they exit 0 after each job and
+      # "on-failure" would NOT replace them, slowly draining the pool to zero.
+      # No max_attempts: it would stop the pool after N jobs.
       restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
+        condition: any
+        delay: 15s
       resources:
         limits:
           cpus: "2"
           memory: 4G
 
 volumes:
-  runner-work:
   runner-logs:
+
+# GitHub App private key as a Swarm secret (create once per swarm):
+#   docker secret create gh_app_key ./app-private-key.pem
+# Then uncomment BOTH blocks (the stack fails to deploy if the secret is missing):
+#
+# services:
+#   runner:
+#     secrets:
+#       - gh_app_key
+# secrets:
+#   gh_app_key:
+#     external: true

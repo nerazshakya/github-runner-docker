@@ -7,13 +7,11 @@ services:
     environment:
       LABELS:      "uat"
       RUNNER_NAME: "uat-runner"
+      # EPHEMERAL: "true"   # enable after DEV has run clean for a while
 
     deploy:
       replicas: 2   
       placement:
         constraints:
-          - node.role == manager 
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
+          - node.role == manager
+      # restart_policy is inherited from docker-compose.yml (condition: any)

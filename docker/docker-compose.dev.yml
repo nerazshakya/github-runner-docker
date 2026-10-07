@@ -9,13 +9,11 @@ services:
     environment:
       LABELS:      "dev"
       RUNNER_NAME: "dev-runner"
+      EPHEMERAL:   "true"     # one job per container; Swarm refills the pool
 
     deploy:
       replicas: 2   
       placement:
         constraints:
-          - node.role == manager 
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
+          - node.role == manager
+      # restart_policy is inherited from docker-compose.yml (condition: any)

@@ -1,9 +1,10 @@
 #!/bin/bash
 # Container entrypoint:
-#   1. Clean up offline runners from GHES (prevents ghost entries accumulating)
-#   2. Get a runner registration token
+#   1. (persistent mode only) Clean up offline runners from GHES
+#   2. Get a runner registration token (GitHub App if APP_ID is set, else PAT)
 #   3. Register the runner with GitHub
-#   4. Run jobs continuously (persistent mode — not ephemeral)
+#   4. Run jobs: forever when EPHEMERAL!=true, one job then exit when EPHEMERAL=true
+#      (Swarm restart_policy "any" then starts a fresh container)
 #   5. Deregister cleanly on SIGINT/SIGTERM/SIGQUIT
 
 set -euo pipefail
@@ -13,6 +14,11 @@ export PATH="${PATH}:/actions-runner"
 
 # Keep credentials out of child process environments
 export -n ACCESS_TOKEN RUNNER_TOKEN
+
+# GitHub App auth is used when APP_ID is set (see token.sh), otherwise the PAT.
+# The App private key is read from a file (Swarm secret), never from env.
+HAVE_API_AUTH=false
+[[ -n "${ACCESS_TOKEN:-}" || -n "${APP_ID:-}" ]] && HAVE_API_AUTH=true
 
 # ---------------------------------------------------------------------------
 # Config — read from env with sensible defaults
@@ -51,21 +57,26 @@ esac
 # ---------------------------------------------------------------------------
 deregister() {
   echo "[runner] Deregistering..."
-  if [[ -n "${ACCESS_TOKEN:-}" ]]; then
-    RUNNER_TOKEN=$(ACCESS_TOKEN="${ACCESS_TOKEN}" bash /token.sh)
+  local tok="${RUNNER_TOKEN:-}"
+  if [[ "${HAVE_API_AUTH}" == "true" ]]; then
+    # A failed token fetch must not abort the trap under set -e
+    tok=$(ACCESS_TOKEN="${ACCESS_TOKEN:-}" bash /token.sh) || tok="${RUNNER_TOKEN:-}"
   fi
-  cd /actions-runner
-  ./config.sh remove --token "${RUNNER_TOKEN}" || true
+  (cd /actions-runner && ./config.sh remove --token "${tok}") || true
 }
 trap 'deregister' INT TERM QUIT
 
 # ---------------------------------------------------------------------------
-# Cleanup offline runners from GHES before registering
+# Cleanup offline runners from GHES before registering (PERSISTENT MODE ONLY)
 # Prevents ghost entries accumulating after nightly server restarts.
-# Only runs when ACCESS_TOKEN and ORG_NAME are available (org scope).
+# Only runs when ACCESS_TOKEN (PAT) and ORG_NAME are available (org scope).
+# Skipped for ephemeral runners: they deregister themselves, GitHub removes
+# stale ones, and a sibling replica that has registered but not yet connected
+# looks "offline", so this cleanup could delete a healthy runner.
 # Failures are non-fatal — a cleanup error should never block registration.
 # ---------------------------------------------------------------------------
-if [[ -n "${ACCESS_TOKEN:-}" && "${RUNNER_SCOPE}" == org* && -n "${ORG_NAME:-}" ]]; then
+if [[ "${EPHEMERAL:-false}" != "true" \
+   && -n "${ACCESS_TOKEN:-}" && "${RUNNER_SCOPE}" == org* && -n "${ORG_NAME:-}" ]]; then
   echo "[runner] Cleaning up offline runners matching '${RUNNER_NAME_BASE}-*'..."
   ACCESS_TOKEN="${ACCESS_TOKEN}" \
   GITHUB_HOST="${GITHUB_HOST}" \
@@ -77,13 +88,13 @@ fi
 # ---------------------------------------------------------------------------
 # Get a registration token
 # ---------------------------------------------------------------------------
-if [[ -n "${ACCESS_TOKEN:-}" ]]; then
+if [[ "${HAVE_API_AUTH}" == "true" ]]; then
   echo "[runner] Fetching registration token..."
-  RUNNER_TOKEN=$(ACCESS_TOKEN="${ACCESS_TOKEN}" bash /token.sh)
+  RUNNER_TOKEN=$(ACCESS_TOKEN="${ACCESS_TOKEN:-}" bash /token.sh)
 fi
 
 [[ -z "${RUNNER_TOKEN:-}" ]] && {
-  echo "ERROR: Set ACCESS_TOKEN (PAT) or RUNNER_TOKEN"
+  echo "ERROR: Set APP_ID (+ APP_INSTALLATION_ID + key secret), ACCESS_TOKEN (PAT) or RUNNER_TOKEN"
   exit 1
 }
 

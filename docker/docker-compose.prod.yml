@@ -1,21 +1,18 @@
 # PROD environment override.
 # Usage: docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml gh-runner-prod
 #
-# More replicas and a stricter restart policy than DEV/UAT since
-# PROD deployments shouldn't be left without an available runner.
+# Two replicas so one hung job cannot block the next PROD deploy.
 
 services:
   runner:
     environment:
       LABELS:       "prod"
       RUNNER_NAME:  "prod-runner"
+      # EPHEMERAL: "true"   # enable after UAT has run clean for a while
 
     deploy:
       replicas: 2   
       placement:
         constraints:
-          - node.role == manager 
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
+          - node.role == manager
+      # restart_policy is inherited from docker-compose.yml (condition: any)

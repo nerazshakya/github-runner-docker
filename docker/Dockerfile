@@ -7,7 +7,10 @@ ARG TARGETPLATFORM="linux/amd64"
 # e.g. --build-arg GITHUB_HOST=github.example.com
 ARG GITHUB_HOST=""
 ARG ORG_NAME
-ARG GITHUB_PAT
+# GITHUB_PAT is deliberately NOT an ARG. Build args are recorded in the image
+# history (docker history --no-trunc) and the image gets pushed to the registry.
+# Pass it as a BuildKit secret instead:
+#   docker build --secret id=gh_pat,env=GITHUB_PAT ...
 
 ENV DEBIAN_FRONTEND=noninteractive \
     RUNNER_ALLOW_RUNASROOT=1 \
@@ -46,9 +49,10 @@ WORKDIR /actions-runner
 RUN mkdir -p /opt/hostedtoolcache
 
 COPY scripts/install_runner.sh .
-RUN chmod +x install_runner.sh \
-    && GITHUB_PAT=${GITHUB_PAT} \
-    ./install_runner.sh \
+RUN --mount=type=secret,id=gh_pat,required=false \
+    chmod +x install_runner.sh \
+    && if [ -f /run/secrets/gh_pat ]; then GITHUB_PAT="$(cat /run/secrets/gh_pat)"; export GITHUB_PAT; fi \
+    && ./install_runner.sh \
         -v "${GH_RUNNER_VERSION}" \
         -p "${TARGETPLATFORM}" \
         -g "${GITHUB_HOST}" \

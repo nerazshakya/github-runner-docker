@@ -88,6 +88,15 @@ else
 
   [[ -n "$ENTRY" ]] || { echo "Error: no runner package found for linux/${ARCH} on ${GITHUB_HOST}"; exit 1; }
 
+  # GHES decides which runner version it serves; -v is NOT used for the download.
+  # Warn when the served package is not the version we were asked for, so the
+  # image tag does not silently lie about what is inside.
+  SERVED_FILE=$(echo "$ENTRY" | jq -r '.filename')
+  if [[ "$SERVED_FILE" != *"-${VERSION}.tar.gz" ]]; then
+    echo "WARNING: requested runner v${VERSION} but ${GITHUB_HOST} serves ${SERVED_FILE}." >&2
+    echo "         Tag the image with the served version, not ${VERSION}." >&2
+  fi
+
   DOWNLOAD_URL=$(echo "$ENTRY"    | jq -r '.download_url')
   DOWNLOAD_TOKEN=$(echo "$ENTRY"  | jq -r '.temp_download_token')
   SHA256=$(echo "$ENTRY"          | jq -r '.sha256_checksum')
@@ -116,4 +125,3 @@ echo ">>> Installing dependencies..."
 ./bin/installdependencies.sh
 
 echo ">>> Runner v${VERSION} installed successfully."
-
