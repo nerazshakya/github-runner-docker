@@ -69,6 +69,10 @@ services:
     # Time for the SIGTERM trap to deregister before Docker sends SIGKILL.
     stop_grace_period: 30s
 
+    # GitHub App key (see the commented "secrets:" block at the bottom).
+    # secrets:
+    #   - gh_app_key
+
     deploy:
       replicas: 1
       # "any" is required for ephemeral runners: they exit 0 after each job and
@@ -87,12 +91,9 @@ volumes:
 
 # GitHub App private key as a Swarm secret (create once per swarm):
 #   docker secret create gh_app_key ./app-private-key.pem
-# Then uncomment BOTH blocks (the stack fails to deploy if the secret is missing):
+# Then uncomment BOTH this block and the "secrets:" lines inside the runner
+# service above. The stack fails to deploy if the secret does not exist.
 #
-# services:
-#   runner:
-#     secrets:
-#       - gh_app_key
 # secrets:
 #   gh_app_key:
 #     external: true
