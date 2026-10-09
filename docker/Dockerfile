@@ -27,7 +27,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install base tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash curl git jq unzip zip tar ca-certificates gnupg \
+    bash curl git jq openssl unzip zip tar ca-certificates gnupg \
     lsb-release dumb-init procps iproute2 openssh-client sudo \
     libicu72 libssl3 libc6 libgcc-s1 libstdc++6 zlib1g \
     && rm -rf /var/lib/apt/lists/*

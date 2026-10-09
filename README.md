@@ -20,8 +20,8 @@ jobs) or **ephemeral** (one container handles one job, then is replaced).
 .
 ├── .github/
 │   └── workflows/
-│       ├── release-runner.yml          # Trigger: orchestrates build -> scan
-│       ├── build-runner-image.yml      # Reusable: build, push, smoke test
+│       ├── release-runner.yml          # Manual trigger: calls the build workflow
+│       ├── build-runner-image.yml      # Reusable: build, token-leak check, smoke test, push
 │       └── cleanup-stale-runners.yml   # Scheduled: removes offline ghost runners
 │
 ├── docker/
@@ -371,7 +371,7 @@ With auto-update disabled, upgrading the runner means rebuilding the image.
 Workflows handle the build pipeline:
 
 ```
-release-runner.yml  ──► build-runner-image.yml  (build + push + smoke test)
+release-runner.yml  ──► build-runner-image.yml  (build, token-leak check, smoke test, push)
 ```
 
 ### Required Vars (Settings > Variables > Actions)
@@ -380,33 +380,24 @@ release-runner.yml  ──► build-runner-image.yml  (build + push + smoke test
 | --- | --- |
 | `DOCKER_REGISTRY_URL` | `registry.example.com` |
 | `DOCKER_REGISTRY_PU_USER` | Artifactory username |
+| `CI_RUNNER_LABELS` | Optional. JSON array of labels for the runners that execute CI jobs. Default `["self-hosted","linux"]`. |
 
 ### Required Secrets (Settings > Secrets > Actions)
 
 | Secret | Description |
 | --- | --- |
 | `DOCKER_REGISTRY_PU_TOKEN` | Artifactory API token |
-| `GH_PAT_V1` | GitHub token used to download the runner binary from GHES during build |
+| `GH_PAT_V1` | GitHub token used to download the runner binary from GHES during build, and by the cleanup workflow to delete offline runners. It needs permission to manage org runners. |
 
-`GH_PAT_V1` must be passed to the build as a **BuildKit secret**, never as a
-build arg. Build args are recorded in the image history and the image is pushed
-to the registry, so anyone who can pull it can read the token with
-`docker history --no-trunc`. In `build-runner-image.yml`, remove
-`GITHUB_PAT` from `build-args` and pass:
+`build-runner-image.yml` passes `GH_PAT_V1` to the build as a **BuildKit
+secret**, never as a build arg. Build args are recorded in the image history
+and the image is pushed to the registry, so anyone who can pull it could read
+the token with `docker history --no-trunc`. The workflow also inspects the
+history after the build and **fails before the push** if it finds the token
+value or anything shaped like a GitHub token.
 
-```
-- uses: docker/build-push-action@v6
-  with:
-    secrets: |
-      gh_pat=${{ secrets.GH_PAT_V1 }}
-```
-
-Adapt this to however your workflow invokes the build. After the first build,
-check that nothing leaks:
-
-```
-docker history --no-trunc registry.example.com/my-org/github-runner:latest | grep -i ghp_
-```
+The workflow uses plain `docker` commands and only `actions/checkout`, so it
+does not depend on marketplace actions being available on your GHES server.
 
 ### Manual Trigger
 
@@ -441,7 +432,18 @@ The startup cleanup is skipped in ephemeral mode on purpose: a sibling replica
 that has registered but not yet connected looks "offline", so cleanup could
 delete a healthy runner.
 
-Run manually: **Actions > Cleanup Stale Runners > Run workflow**
+The workflow only touches runners whose name starts with `dev-runner-`,
+`uat-runner-` or `prod-runner-` (edit `RUNNER_NAME_PREFIXES` in the workflow if
+you rename them), so offline runners owned by other teams are left alone. It
+reads the org from the repository owner and the API URL from the server it
+runs on.
+
+Run manually: **Actions > Cleanup Stale Runners > Run workflow**. Tick
+`dry_run` first to see what would be removed without deleting anything.
+
+Limits: the job runs on a runner, so it cannot run if every runner is down.
+Set `CI_RUNNER_LABELS` to a runner outside the pools being cleaned. Also check
+that 03:00 UTC does not collide with your nightly server shutdown.
 
 ---
 

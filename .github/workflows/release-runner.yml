@@ -1,0 +1,37 @@
+# Manual release of the runner image.
+# Actions > Release Runner Image > Run workflow
+#
+# On GHES the server decides which runner version it serves, so runner_version
+# is only the image tag. install_runner.sh warns in the build log when the
+# served version differs from the one requested.
+name: Release Runner Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner_version:
+        description: Runner version for the image tag (e.g. 2.324.0)
+        required: true
+        default: "2.324.0"
+      github_host:
+        description: GHES hostname (leave empty for github.com)
+        required: false
+        default: "github.example.com"
+      org_name:
+        description: GHES org name (required with github_host)
+        required: false
+        default: "your-org"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-runner-image.yml
+    with:
+      runner_version: ${{ inputs.runner_version }}
+      github_host: ${{ inputs.github_host }}
+      org_name: ${{ inputs.org_name }}
+    secrets:
+      DOCKER_REGISTRY_PU_TOKEN: ${{ secrets.DOCKER_REGISTRY_PU_TOKEN }}
+      GH_PAT_V1: ${{ secrets.GH_PAT_V1 }}

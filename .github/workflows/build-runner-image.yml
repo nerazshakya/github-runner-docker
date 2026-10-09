@@ -1,0 +1,109 @@
+# Reusable workflow: build the runner image, push it, smoke test it.
+# Called by release-runner.yml. Uses plain docker commands (no third-party
+# actions) so it works on a GHES server that does not mirror marketplace actions.
+#
+# Repo variables : DOCKER_REGISTRY_URL, DOCKER_REGISTRY_PU_USER
+#                  CI_RUNNER_LABELS (optional, JSON array, default ["self-hosted","linux"])
+# Repo secrets   : DOCKER_REGISTRY_PU_TOKEN, GH_PAT_V1
+#
+# GH_PAT_V1 reaches the build as a BuildKit secret. It must never be a build
+# arg, because build args are stored in the image history.
+name: Build Runner Image
+
+on:
+  workflow_call:
+    inputs:
+      runner_version:
+        description: Runner version to tag the image with (e.g. 2.324.0)
+        type: string
+        required: true
+      github_host:
+        description: GHES hostname. Leave empty for github.com.
+        type: string
+        required: false
+        default: ""
+      org_name:
+        description: GHES org name (required with github_host)
+        type: string
+        required: false
+        default: ""
+    secrets:
+      DOCKER_REGISTRY_PU_TOKEN:
+        required: true
+      GH_PAT_V1:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ fromJSON(vars.CI_RUNNER_LABELS || '["self-hosted","linux"]') }}
+    timeout-minutes: 30
+    env:
+      DOCKER_BUILDKIT: "1"
+      REGISTRY: ${{ vars.DOCKER_REGISTRY_URL }}
+      RUNNER_VERSION: ${{ inputs.runner_version }}
+      GH_HOST: ${{ inputs.github_host }}
+      ORG: ${{ inputs.org_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to registry
+        env:
+          REGISTRY_USER: ${{ vars.DOCKER_REGISTRY_PU_USER }}
+          REGISTRY_TOKEN: ${{ secrets.DOCKER_REGISTRY_PU_TOKEN }}
+        run: |
+          echo "${REGISTRY_TOKEN}" | docker login "${REGISTRY}" -u "${REGISTRY_USER}" --password-stdin
+
+      - name: Build image
+        env:
+          GITHUB_PAT: ${{ secrets.GH_PAT_V1 }}
+        run: |
+          set -euo pipefail
+          IMAGE="${REGISTRY}/my-org/github-runner"
+          args=(--no-cache -f docker/Dockerfile
+                --build-arg "GH_RUNNER_VERSION=${RUNNER_VERSION}")
+          if [[ -n "${GH_HOST}" ]]; then
+            [[ -n "${ORG}" ]] || { echo "org_name is required when github_host is set"; exit 1; }
+            [[ -n "${GITHUB_PAT}" ]] || { echo "GH_PAT_V1 is required for a GHES build"; exit 1; }
+            args+=(--build-arg "GITHUB_HOST=${GH_HOST}" --build-arg "ORG_NAME=${ORG}"
+                   --secret id=gh_pat,env=GITHUB_PAT)
+          fi
+          docker build "${args[@]}" \
+            -t "${IMAGE}:${RUNNER_VERSION}" -t "${IMAGE}:latest" .
+
+      - name: Check the token did not end up in the image
+        env:
+          GITHUB_PAT: ${{ secrets.GH_PAT_V1 }}
+        run: |
+          set -euo pipefail
+          IMAGE="${REGISTRY}/my-org/github-runner"
+          hist=$(docker history --no-trunc "${IMAGE}:${RUNNER_VERSION}")
+          if [[ -n "${GITHUB_PAT}" ]] && grep -qF -- "${GITHUB_PAT}" <<<"${hist}"; then
+            echo "FAIL: GH_PAT_V1 value found in image history. Do not push." >&2; exit 1
+          fi
+          if grep -qE 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' <<<"${hist}"; then
+            echo "FAIL: something that looks like a GitHub token is in the image history." >&2; exit 1
+          fi
+          echo "OK: no token found in image history."
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          IMAGE="${REGISTRY}/my-org/github-runner"
+          docker run --rm --entrypoint bash "${IMAGE}:${RUNNER_VERSION}" -euc '
+            /actions-runner/bin/Runner.Listener --version
+            docker --version
+            jq --version
+            openssl version
+            test -x /entrypoint.sh && test -x /token.sh && test -x /healthcheck.sh
+            bash -n /entrypoint.sh && bash -n /token.sh
+          '
+
+      - name: Push
+        run: |
+          set -euo pipefail
+          IMAGE="${REGISTRY}/my-org/github-runner"
+          docker push "${IMAGE}:${RUNNER_VERSION}"
+          docker push "${IMAGE}:latest"

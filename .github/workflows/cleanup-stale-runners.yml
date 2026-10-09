@@ -1,0 +1,79 @@
+# Removes offline self-hosted runners from the org. Only needed for PERSISTENT
+# runners: ephemeral runners deregister themselves and GitHub removes ephemeral
+# runners that stop connecting. Retire this workflow once every environment is
+# ephemeral.
+#
+# Only runners whose name starts with one of RUNNER_NAME_PREFIXES are touched,
+# so offline runners that belong to other teams are left alone.
+#
+# Secret: GH_PAT_V1 must be allowed to manage org runners (admin:org, or a
+# GitHub App token with the Self-hosted runners permission).
+#
+# Caveat: this job runs on a runner. If every runner is down it cannot run.
+# Point CI_RUNNER_LABELS at a runner outside the pools you are cleaning, and
+# check the schedule does not collide with your nightly server shutdown.
+name: Cleanup Stale Runners
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: List what would be removed without deleting
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ${{ fromJSON(vars.CI_RUNNER_LABELS || '["self-hosted","linux"]') }}
+    timeout-minutes: 10
+    env:
+      API_URL: ${{ github.api_url }}
+      ORG: ${{ github.repository_owner }}
+      TOKEN: ${{ secrets.GH_PAT_V1 }}
+      RUNNER_NAME_PREFIXES: "dev-runner- uat-runner- prod-runner-"
+      DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
+    steps:
+      - name: Remove offline runners
+        run: |
+          set -euo pipefail
+          [[ -n "${TOKEN}" ]] || { echo "GH_PAT_V1 secret is not set"; exit 1; }
+          api="${API_URL}/orgs/${ORG}/actions/runners"
+          found=$(mktemp); trap 'rm -f "${found}"' EXIT
+
+          # Collect first, delete afterwards, so paging is not disturbed by deletes.
+          page=1
+          while :; do
+            resp=$(curl -fsS --max-time 30 \
+              -H "Authorization: token ${TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "${api}?per_page=100&page=${page}")
+            [[ "$(jq '.runners | length' <<<"${resp}")" -eq 0 ]] && break
+            for prefix in ${RUNNER_NAME_PREFIXES}; do
+              jq -r --arg p "${prefix}" \
+                '.runners[] | select(.status=="offline" and (.name|startswith($p))) | "\(.id) \(.name)"' \
+                <<<"${resp}" >> "${found}"
+            done
+            page=$((page + 1))
+          done
+          sort -u -o "${found}" "${found}"
+
+          removed=0
+          while read -r id name; do
+            [[ -z "${id}" ]] && continue
+            if [[ "${DRY_RUN}" == "true" ]]; then
+              echo "[dry run] would remove ${name} (id ${id})"
+            else
+              echo "Removing ${name} (id ${id})"
+              curl -fsS --max-time 30 -X DELETE \
+                -H "Authorization: token ${TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                "${api}/${id}" && removed=$((removed + 1)) \
+                || echo "Warning: could not remove ${name}, skipping"
+            fi
+          done < "${found}"
+          echo "Done. Removed ${removed} offline runner(s)."
