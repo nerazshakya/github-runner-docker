@@ -50,6 +50,8 @@ on:
     secrets:
       DOCKER_REGISTRY_TOKEN:
         required: false
+      DOCKER_REGISTRY_USER: 
+        required: false
       GH_PAT:
         required: false
 
