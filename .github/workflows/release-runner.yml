@@ -80,5 +80,6 @@ jobs:
       org_name: ${{ inputs.org_name || vars.RUNNER_ORG_NAME || '' }}
       push: ${{ github.event_name != 'pull_request' }}
     secrets:
+      DOCKER_REGISTRY_USER: ${{ vars.DOCKER_REGISTRY_USER }}
       DOCKER_REGISTRY_TOKEN: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
       GH_PAT: ${{ secrets.GH_PAT }}
