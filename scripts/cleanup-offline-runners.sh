@@ -1,69 +1,88 @@
 #!/bin/bash
-# Removes offline self-hosted runners matching our name pattern from GHES.
-# Called by entrypoint.sh before registration to clean up stale entries
-# from previous sessions (e.g. after nightly server shutdown).
+# Removes offline self-hosted runners matching our name pattern from an org.
+# Called by entrypoint.sh before registration (persistent mode) to clean up
+# stale entries from previous sessions (e.g. after a host crash).
 #
-# Only removes runners whose name starts with RUNNER_NAME_BASE — so it
+# Only removes runners whose name starts with "${RUNNER_NAME_BASE}-", so it
 # never touches runners belonging to other teams or stacks.
 #
+# Auth comes from token.sh: a GitHub App installation token when APP_ID is set,
+# otherwise ACCESS_TOKEN (needs permission to manage org runners).
+#
 # Required env vars:
-#   ACCESS_TOKEN      — GitHub PAT with admin:org scope
-#   GITHUB_HOST       — e.g. github.example.com
-#   ORG_NAME          — e.g. your-org
-#   RUNNER_NAME_BASE  — base name prefix e.g. runner-dev
+#   ORG_NAME          e.g. your-org
+#   RUNNER_NAME_BASE  base name prefix e.g. dev-runner
+#   ACCESS_TOKEN or APP_ID + APP_INSTALLATION_ID (+ key file)
+# Optional:
+#   GITHUB_HOST       default github.com; set for GHES
+#   GITHUB_API_URL    override the API base
 #
 # Standalone usage:
-#   ENV_FILE=/deployment/GitHub/runner.env \
-#   RUNNER_NAME_BASE=runner-dev \
-#   ./cleanup-offline-runners.sh
+#   ENV_FILE=/etc/gh-runner/runner.env RUNNER_NAME_BASE=dev-runner ./cleanup-offline-runners.sh
 
 set -euo pipefail
 
-# Source env file only when running standalone
-if [[ -z "${ACCESS_TOKEN:-}" ]]; then
-  ENV_FILE="${ENV_FILE:-/deployment/GitHub/runner.env}"
-  [[ -f "$ENV_FILE" ]] && { set -a; source "$ENV_FILE"; set +a; } \
-    || { echo "ERROR: ACCESS_TOKEN not set and env file not found: $ENV_FILE"; exit 1; }
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TOKEN_SH="${TOKEN_SH:-/token.sh}"
+[[ -f "${TOKEN_SH}" ]] || TOKEN_SH="${HERE}/token.sh"
+
+# Source env file only when running standalone without credentials
+if [[ -z "${ACCESS_TOKEN:-}" && -z "${APP_ID:-}" ]]; then
+  ENV_FILE="${ENV_FILE:-/etc/gh-runner/runner.env}"
+  if [[ -f "${ENV_FILE}" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "${ENV_FILE}"
+    set +a
+  else
+    echo "ERROR: no credentials in env and env file not found: ${ENV_FILE}" >&2
+    exit 1
+  fi
 fi
 
-: "${ACCESS_TOKEN:?ACCESS_TOKEN is required}"
-: "${GITHUB_HOST:?GITHUB_HOST is required}"
 : "${ORG_NAME:?ORG_NAME is required}"
 : "${RUNNER_NAME_BASE:?RUNNER_NAME_BASE is required}"
 
-API="https://${GITHUB_HOST}/api/v3"
-PAGE=1
-REMOVED=0
+HOST="${GITHUB_HOST:-github.com}"
+if [[ -n "${GITHUB_API_URL:-}" ]]; then
+  API="${GITHUB_API_URL%/}"
+elif [[ "${HOST}" == "github.com" ]]; then
+  API="https://api.github.com"
+else
+  API="https://${HOST}/api/v3"
+fi
+
+AUTH=$(RUNNER_SCOPE=org bash "${TOKEN_SH}" auth)
+CURL=(curl -fsS --connect-timeout 10 --max-time 30)
+# Credentials go to curl on stdin so they do not appear in `ps`.
+gh() { # METHOD URL
+  printf 'header = "Authorization: token %s"\n' "${AUTH}" \
+    | "${CURL[@]}" -K - -X "$1" -H "Accept: application/vnd.github+json" "$2"
+}
 
 echo "[cleanup] Removing offline runners matching '${RUNNER_NAME_BASE}-*'..."
 
+# Collect first, delete afterwards, so paging is not disturbed by deletes.
+FOUND=$(mktemp); trap 'rm -f "${FOUND}"' EXIT
+PAGE=1
 while true; do
-  RESPONSE=$(curl -fsSL \
-    -H "Authorization: token ${ACCESS_TOKEN}" \
-    -H "Accept: application/vnd.github.v3+json" \
-    "${API}/orgs/${ORG_NAME}/actions/runners?per_page=100&page=${PAGE}")
-
-  COUNT=$(echo "$RESPONSE" | jq '.runners | length')
-  [[ "$COUNT" -eq 0 ]] && break
-
-  # Only remove offline runners whose name starts with our base name.
-  # This avoids touching runners from other teams or stacks.
-  MATCHES=$(echo "$RESPONSE" | jq -r \
-    --arg prefix "${RUNNER_NAME_BASE}-" \
-    '.runners[] | select(.status=="offline" and (.name | startswith($prefix))) | "\(.id) \(.name)"')
-
-  while IFS=' ' read -r ID NAME; do
-    [[ -z "$ID" ]] && continue
-    echo "[cleanup] Removing: ${NAME} (ID: ${ID})"
-    curl -fsSL -XDELETE \
-      -H "Authorization: token ${ACCESS_TOKEN}" \
-      -H "Accept: application/vnd.github.v3+json" \
-      "${API}/orgs/${ORG_NAME}/actions/runners/${ID}" || \
-      echo "[cleanup] Warning: failed to remove runner ${ID}, skipping"
-    REMOVED=$((REMOVED + 1))
-  done <<< "$MATCHES"
-
+  RESPONSE=$(gh GET "${API}/orgs/${ORG_NAME}/actions/runners?per_page=100&page=${PAGE}")
+  [[ "$(jq '.runners | length' <<<"${RESPONSE}")" -eq 0 ]] && break
+  jq -r --arg prefix "${RUNNER_NAME_BASE}-" \
+    '.runners[] | select(.status=="offline" and (.name | startswith($prefix))) | "\(.id) \(.name)"' \
+    <<<"${RESPONSE}" >> "${FOUND}"
   PAGE=$((PAGE + 1))
 done
+
+REMOVED=0
+while read -r ID NAME; do
+  [[ -z "${ID}" ]] && continue
+  echo "[cleanup] Removing: ${NAME} (ID: ${ID})"
+  if gh DELETE "${API}/orgs/${ORG_NAME}/actions/runners/${ID}" >/dev/null; then
+    REMOVED=$((REMOVED + 1))
+  else
+    echo "[cleanup] Warning: failed to remove runner ${ID}, skipping"
+  fi
+done < "${FOUND}"
 
 echo "[cleanup] Done. Removed ${REMOVED} offline runner(s) matching '${RUNNER_NAME_BASE}-*'."

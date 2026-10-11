@@ -1,0 +1,19 @@
+# GitHub App private key for Docker Swarm. Added automatically by deploy.sh
+# when APP_ID is set. The key is a Swarm secret mounted at /run/secrets/gh_app_key.
+#
+# deploy.sh creates the secret from APP_KEY_PATH if it does not exist yet.
+# Swarm secrets are immutable. To rotate the key, create a new secret under a
+# new name and set APP_KEY_SECRET_NAME to it, then redeploy (rolling update):
+#   docker secret create gh_app_key_2026_10 ./new-key.pem
+#   APP_KEY_SECRET_NAME=gh_app_key_2026_10
+
+services:
+  runner:
+    secrets:
+      - source: gh_app_key
+        target: gh_app_key
+
+secrets:
+  gh_app_key:
+    external: true
+    name: ${APP_KEY_SECRET_NAME:-gh_app_key}

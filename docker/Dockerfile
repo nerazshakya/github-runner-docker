@@ -6,7 +6,8 @@ ARG TARGETPLATFORM="linux/amd64"
 # For enterprise:
 # e.g. --build-arg GITHUB_HOST=github.example.com
 ARG GITHUB_HOST=""
-ARG ORG_NAME
+# Only needed with GITHUB_HOST (GHES): the org whose runner download is queried.
+ARG ORG_NAME=""
 # GITHUB_PAT is deliberately NOT an ARG. Build args are recorded in the image
 # history (docker history --no-trunc) and the image gets pushed to the registry.
 # Pass it as a BuildKit secret instead:
@@ -14,8 +15,10 @@ ARG ORG_NAME
 
 ENV DEBIAN_FRONTEND=noninteractive \
     RUNNER_ALLOW_RUNASROOT=1 \
-    AGENT_TOOLSDIRECTORY=/opt/hostedtoolcache \
-    ORG_NAME=${ORG_NAME}
+    AGENT_TOOLSDIRECTORY=/opt/hostedtoolcache
+# Runtime configuration (GITHUB_HOST, ORG_NAME, APP_ID, ACCESS_TOKEN, ...) is
+# NOT baked in: it is supplied when the container starts, so one image serves
+# every org/environment. See README "Configuration".
 
 # NOTE: this container runs as root. That's what lets it read/write
 # /var/run/docker.sock when it's mounted in from the host (socket mount,

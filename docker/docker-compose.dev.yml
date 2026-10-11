@@ -1,7 +1,7 @@
 # DEV environment override.
 #
 # Usage:
-#   ./deploy.sh deploy -s gh-runner-dev -e /deployment/GitHub/runner.env \
+#   ./deploy.sh deploy -s gh-runner-dev -e /etc/gh-runner/runner.env \
 #     -c docker/docker-compose.yml -o docker/docker-compose.dev.yml
 
 services:
@@ -12,7 +12,7 @@ services:
       EPHEMERAL:   "true"     # one job per container; Swarm refills the pool
 
     deploy:
-      replicas: 2   
+      replicas: 2
       placement:
         constraints:
           - node.role == manager
