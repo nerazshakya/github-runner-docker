@@ -5,14 +5,14 @@
 #
 # Registry: Docker Hub by default, or any registry that accepts `docker login`.
 #
-# Repo variables : DOCKER_REGISTRY_PU_USER   registry username (Docker Hub user/org login)
+# Repo variables : DOCKER_REGISTRY_USER   registry username (Docker Hub user/org login)
 #                  DOCKER_REGISTRY_URL       empty or docker.io = Docker Hub; otherwise the
 #                                            registry host, e.g. registry.example.com
 #                  DOCKER_IMAGE_NAME         optional, e.g. myorg/github-runner
-#                                            (default: <DOCKER_REGISTRY_PU_USER>/github-runner)
+#                                            (default: <DOCKER_REGISTRY_USER>/github-runner)
 #                  CI_RUNNER_LABELS          optional JSON array for runs-on
 #                                            (default ["ubuntu-latest"])
-# Repo secrets   : DOCKER_REGISTRY_PU_TOKEN  registry access token (Docker Hub: a
+# Repo secrets   : DOCKER_REGISTRY_TOKEN  registry access token (Docker Hub: a
 #                                            Personal Access Token with Read & Write)
 #                  GH_PAT_V1                 only for GHES builds: downloads the runner binary
 #
@@ -48,7 +48,7 @@ on:
         required: false
         default: true
     secrets:
-      DOCKER_REGISTRY_PU_TOKEN:
+      DOCKER_REGISTRY_TOKEN:
         required: false
       GH_PAT_V1:
         required: false
@@ -70,8 +70,8 @@ jobs:
           EXTRA_TAG: ${{ inputs.extra_tag }}
           REGISTRY: ${{ vars.DOCKER_REGISTRY_URL }}
           IMAGE_NAME: ${{ vars.DOCKER_IMAGE_NAME }}
-          REGISTRY_USER: ${{ vars.DOCKER_REGISTRY_PU_USER }}
-          REGISTRY_TOKEN: ${{ secrets.DOCKER_REGISTRY_PU_TOKEN }}
+          REGISTRY_USER: ${{ vars.DOCKER_REGISTRY_USER }}
+          REGISTRY_TOKEN: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
           GH_HOST: ${{ inputs.github_host }}
           ORG: ${{ inputs.org_name }}
           GITHUB_PAT: ${{ secrets.GH_PAT_V1 }}

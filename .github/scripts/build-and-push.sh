@@ -41,8 +41,8 @@ echo "Image: ${image}  Tags: ${tags}"
 
 # --- 2. registry login (always log out afterwards) --------------------------
 if [[ "${PUSH}" == "true" ]]; then
-  : "${REGISTRY_USER:?DOCKER_REGISTRY_PU_USER variable is not set (needed to push)}"
-  [[ -n "${REGISTRY_TOKEN:-}" ]] || { echo "DOCKER_REGISTRY_PU_TOKEN secret is not set." >&2; exit 1; }
+  : "${REGISTRY_USER:?DOCKER_REGISTRY_USER variable is not set (needed to push)}"
+  [[ -n "${REGISTRY_TOKEN:-}" ]] || { echo "DOCKER_REGISTRY_TOKEN secret is not set." >&2; exit 1; }
   # LOGIN_HOST is unquoted on purpose: empty means no argument (Docker Hub)
   trap 'docker logout ${login_host} >/dev/null 2>&1 || true' EXIT
   echo "${REGISTRY_TOKEN}" | docker login ${login_host} -u "${REGISTRY_USER}" --password-stdin

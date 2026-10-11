@@ -24,14 +24,17 @@ on:
     inputs:
       runner_version:
         description: Runner version (e.g. 2.324.0). Empty = RUNNER_VERSION variable, else latest.
+        type: string
         required: false
         default: ""
       github_host:
         description: GHES hostname to download the runner from (empty = github.com)
+        type: string
         required: false
         default: ""
       org_name:
         description: GHES org name (required with github_host)
+        type: string
         required: false
         default: ""
   pull_request:
@@ -77,5 +80,5 @@ jobs:
       org_name: ${{ inputs.org_name || vars.RUNNER_ORG_NAME || '' }}
       push: ${{ github.event_name != 'pull_request' }}
     secrets:
-      DOCKER_REGISTRY_PU_TOKEN: ${{ secrets.DOCKER_REGISTRY_PU_TOKEN }}
+      DOCKER_REGISTRY_TOKEN: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
       GH_PAT_V1: ${{ secrets.GH_PAT_V1 }}

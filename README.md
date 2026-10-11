@@ -168,8 +168,8 @@ Published tags: `<runner-version>`, `latest`, `sha-<commit>`, and the release ta
 
 | Kind | Name | Value |
 | --- | --- | --- |
-| Variable | `DOCKER_REGISTRY_PU_USER` | Your Docker Hub username |
-| Secret | `DOCKER_REGISTRY_PU_TOKEN` | The access token from step 1 |
+| Variable | `DOCKER_REGISTRY_USER` | Your Docker Hub username |
+| Secret | `DOCKER_REGISTRY_TOKEN` | The access token from step 1 |
 | Variable | `DOCKER_IMAGE_NAME` | Optional, e.g. `myorg/github-runner`. Default `<user>/github-runner` |
 
    Leave `DOCKER_REGISTRY_URL` unset (or set it to `docker.io`).
@@ -184,15 +184,15 @@ Same variables and secret, and also set:
 | `DOCKER_REGISTRY_URL` | Registry host, e.g. `registry.example.com` |
 | `DOCKER_IMAGE_NAME` | Path in the registry, e.g. `team/github-runner` |
 
-`DOCKER_REGISTRY_PU_USER` / `DOCKER_REGISTRY_PU_TOKEN` are whatever that
+`DOCKER_REGISTRY_USER` / `DOCKER_REGISTRY_TOKEN` are whatever that
 registry's `docker login` accepts (username + API token).
 
 ### All CI settings
 
 | Name | Kind | Purpose |
 | --- | --- | --- |
-| `DOCKER_REGISTRY_PU_USER` | Variable | Registry username |
-| `DOCKER_REGISTRY_PU_TOKEN` | Secret | Registry access token |
+| `DOCKER_REGISTRY_USER` | Variable | Registry username |
+| `DOCKER_REGISTRY_TOKEN` | Secret | Registry access token |
 | `DOCKER_REGISTRY_URL` | Variable | Empty/`docker.io` = Docker Hub, else registry host |
 | `DOCKER_IMAGE_NAME` | Variable | Optional image path |
 | `RUNNER_VERSION` | Variable | Optional pinned runner version |
@@ -542,7 +542,7 @@ after abrupt kills (host crash, `SIGKILL`). Two things handle that:
 | `session already exists` | Duplicate runner name. Names get a random suffix; check nothing overrides it. |
 | `permission denied` on `/var/run/docker.sock` in a job | The container must run as root (default) and the host socket must be mounted. |
 | `error while interpolating ... RUNNER_IMAGE` | `RUNNER_IMAGE` missing from `runner.env`. |
-| CI: `DOCKER_REGISTRY_PU_TOKEN secret is not set` | Set the secret (Settings > Secrets > Actions) and the `DOCKER_REGISTRY_PU_USER` variable. |
+| CI: `DOCKER_REGISTRY_TOKEN secret is not set` | Set the secret (Settings > Secrets > Actions) and the `DOCKER_REGISTRY_USER` variable. |
 | CI: `denied: requested access to the resource is denied` | The token lacks write access, or the user/org in `DOCKER_IMAGE_NAME` is not yours. |
 | CI: `Could not look up the latest runner release` | The runner cannot reach api.github.com (GHES network). Set the `RUNNER_VERSION` variable. |
 | CI: `WARNING: ... download is NOT verified` | GitHub did not return a checksum for that release. Set `REQUIRE_CHECKSUM=true` to make this fatal. |
