@@ -5,3 +5,10 @@
 /.vs/github-runner-docker/FileContentIndex
 /.vs/github-runner-docker/v17
 /.vs
+
+# Secrets - never commit
+runner.env
+*.env
+!runner.env.template
+*.pem
+env/

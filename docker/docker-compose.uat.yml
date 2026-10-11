@@ -1,6 +1,6 @@
 # UAT environment override.
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.uat.yml up
-#        docker stack deploy -c docker-compose.yml -c docker-compose.uat.yml gh-runner-uat
+# Usage: ./deploy.sh deploy -s gh-runner-uat --env uat
+#        (works on Swarm or plain Docker)
 
 services:
   runner:
@@ -10,7 +10,7 @@ services:
       # EPHEMERAL: "true"   # enable after DEV has run clean for a while
 
     deploy:
-      replicas: 2   
+      replicas: 2
       placement:
         constraints:
           - node.role == manager

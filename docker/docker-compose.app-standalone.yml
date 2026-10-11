@@ -1,0 +1,12 @@
+# GitHub App private key for plain Docker (docker compose). Added automatically
+# by deploy.sh when APP_ID is set. APP_KEY_PATH is the .pem on the host; it is
+# mounted read-only at /run/secrets/gh_app_key.
+
+services:
+  runner:
+    secrets:
+      - gh_app_key
+
+secrets:
+  gh_app_key:
+    file: ${APP_KEY_PATH:?set APP_KEY_PATH to the GitHub App private key (.pem)}

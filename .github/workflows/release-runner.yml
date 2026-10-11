@@ -1,37 +1,88 @@
-# Manual release of the runner image.
-# Actions > Release Runner Image > Run workflow
+# Build and publish the runner image.
 #
-# On GHES the server decides which runner version it serves, so runner_version
-# is only the image tag. install_runner.sh warns in the build log when the
-# served version differs from the one requested.
+# Triggers
+#   push to main       builds and PUBLISHES when image files change
+#   pull_request       builds and tests only (nothing is pushed; fork PRs skipped)
+#   workflow_dispatch  manual: Actions > Release Runner Image > Run workflow
+#
+# Runner version: the dispatch input, else repo variable RUNNER_VERSION, else the
+# latest actions/runner release. Pin RUNNER_VERSION for reproducible builds.
+#
+# github.com is the default download source. For GHES set the repo variables
+# RUNNER_GITHUB_HOST and RUNNER_ORG_NAME (or use the dispatch inputs).
+#
+# Registry settings and secrets: see build-runner-image.yml.
 name: Release Runner Image
 
 on:
   workflow_dispatch:
     inputs:
       runner_version:
-        description: Runner version for the image tag (e.g. 2.324.0)
-        required: true
-        default: "2.324.0"
-      github_host:
-        description: GHES hostname (leave empty for github.com)
+        description: Runner version (e.g. 2.324.0). Empty = RUNNER_VERSION variable, else latest.
         required: false
-        default: "github.example.com"
+        default: ""
+      github_host:
+        description: GHES hostname to download the runner from (empty = github.com)
+        required: false
+        default: ""
       org_name:
         description: GHES org name (required with github_host)
         required: false
-        default: "your-org"
+        default: ""
+  push:
+    branches: [main]
+    paths:
+      - docker/Dockerfile
+      - scripts/**
+      - .github/workflows/build-runner-image.yml
+      - .github/workflows/release-runner.yml
+  pull_request:
+    paths:
+      - docker/Dockerfile
+      - scripts/**
+      - .github/workflows/build-runner-image.yml
+      - .github/workflows/release-runner.yml
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-runner-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  version:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(vars.CI_RUNNER_LABELS || '["ubuntu-latest"]') }}
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - id: resolve
+        env:
+          REQUESTED: ${{ inputs.runner_version }}
+          PINNED: ${{ vars.RUNNER_VERSION }}
+        run: |
+          set -euo pipefail
+          v="${REQUESTED:-${PINNED:-latest}}"
+          if [[ "${v}" == "latest" ]]; then
+            v=$(curl -fsS --max-time 30 https://api.github.com/repos/actions/runner/releases/latest \
+                  | jq -r '.tag_name // empty') || v=""
+            v="${v#v}"
+            [[ -n "${v}" ]] || { echo "Could not look up the latest runner release. Set the RUNNER_VERSION variable (e.g. 2.324.0)." >&2; exit 1; }
+          fi
+          [[ "${v}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid runner version '${v}' (want e.g. 2.324.0)." >&2; exit 1; }
+          echo "Runner version: ${v}"
+          echo "version=${v}" >> "${GITHUB_OUTPUT}"
+
   build:
+    needs: version
     uses: ./.github/workflows/build-runner-image.yml
     with:
-      runner_version: ${{ inputs.runner_version }}
-      github_host: ${{ inputs.github_host }}
-      org_name: ${{ inputs.org_name }}
+      runner_version: ${{ needs.version.outputs.version }}
+      github_host: ${{ inputs.github_host || vars.RUNNER_GITHUB_HOST || '' }}
+      org_name: ${{ inputs.org_name || vars.RUNNER_ORG_NAME || '' }}
+      push: ${{ github.event_name != 'pull_request' }}
     secrets:
       DOCKER_REGISTRY_PU_TOKEN: ${{ secrets.DOCKER_REGISTRY_PU_TOKEN }}
       GH_PAT_V1: ${{ secrets.GH_PAT_V1 }}

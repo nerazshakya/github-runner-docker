@@ -1,5 +1,5 @@
 # PROD environment override.
-# Usage: docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml gh-runner-prod
+# Usage: ./deploy.sh deploy -s gh-runner-prod --env prod
 #
 # Two replicas so one hung job cannot block the next PROD deploy.
 
@@ -11,7 +11,7 @@ services:
       # EPHEMERAL: "true"   # enable after UAT has run clean for a while
 
     deploy:
-      replicas: 2   
+      replicas: 2
       placement:
         constraints:
           - node.role == manager

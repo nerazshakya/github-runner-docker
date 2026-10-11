@@ -1,10 +1,19 @@
-# Reusable workflow: build the runner image, push it, smoke test it.
+# Reusable workflow: build the runner image, check it, smoke test it, push it.
 # Called by release-runner.yml. Uses plain docker commands (no third-party
 # actions) so it works on a GHES server that does not mirror marketplace actions.
 #
-# Repo variables : DOCKER_REGISTRY_URL, DOCKER_REGISTRY_PU_USER
-#                  CI_RUNNER_LABELS (optional, JSON array, default ["self-hosted","linux"])
-# Repo secrets   : DOCKER_REGISTRY_PU_TOKEN, GH_PAT_V1
+# Registry: Docker Hub by default, or any registry that accepts `docker login`.
+#
+# Repo variables : DOCKER_REGISTRY_PU_USER   registry username (Docker Hub user/org login)
+#                  DOCKER_REGISTRY_URL       empty or docker.io = Docker Hub; otherwise the
+#                                            registry host, e.g. registry.example.com
+#                  DOCKER_IMAGE_NAME         optional, e.g. myorg/github-runner
+#                                            (default: <DOCKER_REGISTRY_PU_USER>/github-runner)
+#                  CI_RUNNER_LABELS          optional JSON array for runs-on
+#                                            (default ["ubuntu-latest"])
+# Repo secrets   : DOCKER_REGISTRY_PU_TOKEN  registry access token (Docker Hub: a
+#                                            Personal Access Token with Read & Write)
+#                  GH_PAT_V1                 only for GHES builds: downloads the runner binary
 #
 # GH_PAT_V1 reaches the build as a BuildKit secret. It must never be a build
 # arg, because build args are stored in the image history.
@@ -14,11 +23,11 @@ on:
   workflow_call:
     inputs:
       runner_version:
-        description: Runner version to tag the image with (e.g. 2.324.0)
+        description: Runner version to install and tag the image with (e.g. 2.324.0)
         type: string
         required: true
       github_host:
-        description: GHES hostname. Leave empty for github.com.
+        description: GHES hostname to download the runner from. Empty = github.com.
         type: string
         required: false
         default: ""
@@ -27,9 +36,14 @@ on:
         type: string
         required: false
         default: ""
+      push:
+        description: Push the image after a successful build. false = build and test only.
+        type: boolean
+        required: false
+        default: true
     secrets:
       DOCKER_REGISTRY_PU_TOKEN:
-        required: true
+        required: false
       GH_PAT_V1:
         required: false
 
@@ -38,32 +52,62 @@ permissions:
 
 jobs:
   build:
-    runs-on: ${{ fromJSON(vars.CI_RUNNER_LABELS || '["self-hosted","linux"]') }}
+    runs-on: ${{ fromJSON(vars.CI_RUNNER_LABELS || '["ubuntu-latest"]') }}
     timeout-minutes: 30
     env:
       DOCKER_BUILDKIT: "1"
-      REGISTRY: ${{ vars.DOCKER_REGISTRY_URL }}
       RUNNER_VERSION: ${{ inputs.runner_version }}
       GH_HOST: ${{ inputs.github_host }}
       ORG: ${{ inputs.org_name }}
+      PUSH: ${{ inputs.push }}
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve image reference
+        env:
+          REGISTRY: ${{ vars.DOCKER_REGISTRY_URL }}
+          IMAGE_NAME: ${{ vars.DOCKER_IMAGE_NAME }}
+          REGISTRY_USER: ${{ vars.DOCKER_REGISTRY_PU_USER }}
+        run: |
+          set -euo pipefail
+          name="${IMAGE_NAME:-${REGISTRY_USER:+${REGISTRY_USER}/}github-runner}"
+          name="${name,,}"                       # registries require lowercase
+          registry="${REGISTRY#https://}"; registry="${registry%/}"
+          case "${registry}" in
+            ""|docker.io|index.docker.io|registry-1.docker.io)
+              echo "IMAGE=${name}" >> "${GITHUB_ENV}"
+              echo "LOGIN_HOST=" >> "${GITHUB_ENV}" ;;
+            *)
+              echo "IMAGE=${registry}/${name}" >> "${GITHUB_ENV}"
+              echo "LOGIN_HOST=${registry}" >> "${GITHUB_ENV}" ;;
+          esac
+          if [[ "${PUSH}" == "true" && -z "${REGISTRY_USER}" ]]; then
+            echo "DOCKER_REGISTRY_PU_USER variable is not set (needed to push)." >&2; exit 1
+          fi
+
       - name: Log in to registry
+        if: inputs.push
         env:
           REGISTRY_USER: ${{ vars.DOCKER_REGISTRY_PU_USER }}
           REGISTRY_TOKEN: ${{ secrets.DOCKER_REGISTRY_PU_TOKEN }}
         run: |
-          echo "${REGISTRY_TOKEN}" | docker login "${REGISTRY}" -u "${REGISTRY_USER}" --password-stdin
+          set -euo pipefail
+          [[ -n "${REGISTRY_TOKEN}" ]] || { echo "DOCKER_REGISTRY_PU_TOKEN secret is not set." >&2; exit 1; }
+          echo "${REGISTRY_TOKEN}" | docker login ${LOGIN_HOST:+"${LOGIN_HOST}"} -u "${REGISTRY_USER}" --password-stdin
 
       - name: Build image
         env:
           GITHUB_PAT: ${{ secrets.GH_PAT_V1 }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+          REVISION: ${{ github.sha }}
         run: |
           set -euo pipefail
-          IMAGE="${REGISTRY}/my-org/github-runner"
           args=(--no-cache -f docker/Dockerfile
-                --build-arg "GH_RUNNER_VERSION=${RUNNER_VERSION}")
+                --build-arg "GH_RUNNER_VERSION=${RUNNER_VERSION}"
+                --label "org.opencontainers.image.title=github-actions-runner"
+                --label "org.opencontainers.image.version=${RUNNER_VERSION}"
+                --label "org.opencontainers.image.source=${SOURCE_URL}"
+                --label "org.opencontainers.image.revision=${REVISION}")
           if [[ -n "${GH_HOST}" ]]; then
             [[ -n "${ORG}" ]] || { echo "org_name is required when github_host is set"; exit 1; }
             [[ -n "${GITHUB_PAT}" ]] || { echo "GH_PAT_V1 is required for a GHES build"; exit 1; }
@@ -71,14 +115,15 @@ jobs:
                    --secret id=gh_pat,env=GITHUB_PAT)
           fi
           docker build "${args[@]}" \
-            -t "${IMAGE}:${RUNNER_VERSION}" -t "${IMAGE}:latest" .
+            -t "${IMAGE}:${RUNNER_VERSION}" \
+            -t "${IMAGE}:latest" \
+            -t "${IMAGE}:sha-${REVISION:0:7}" .
 
       - name: Check the token did not end up in the image
         env:
           GITHUB_PAT: ${{ secrets.GH_PAT_V1 }}
         run: |
           set -euo pipefail
-          IMAGE="${REGISTRY}/my-org/github-runner"
           hist=$(docker history --no-trunc "${IMAGE}:${RUNNER_VERSION}")
           if [[ -n "${GITHUB_PAT}" ]] && grep -qF -- "${GITHUB_PAT}" <<<"${hist}"; then
             echo "FAIL: GH_PAT_V1 value found in image history. Do not push." >&2; exit 1
@@ -91,19 +136,29 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          IMAGE="${REGISTRY}/my-org/github-runner"
           docker run --rm --entrypoint bash "${IMAGE}:${RUNNER_VERSION}" -euc '
             /actions-runner/bin/Runner.Listener --version
             docker --version
             jq --version
             openssl version
-            test -x /entrypoint.sh && test -x /token.sh && test -x /healthcheck.sh
-            bash -n /entrypoint.sh && bash -n /token.sh
+            test -x /entrypoint.sh && test -x /token.sh && test -x /healthcheck.sh && test -x /cleanup-offline-runners.sh
+            bash -n /entrypoint.sh && bash -n /token.sh && bash -n /cleanup-offline-runners.sh
           '
+          # Misconfiguration must fail fast with a clear message, not hang.
+          if out=$(docker run --rm "${IMAGE}:${RUNNER_VERSION}" /entrypoint.sh true 2>&1); then
+            echo "FAIL: container started without any configuration" >&2; exit 1
+          fi
+          grep -q "REPO_URL required" <<<"${out}" || { echo "unexpected entrypoint output: ${out}" >&2; exit 1; }
 
       - name: Push
+        if: inputs.push
         run: |
           set -euo pipefail
-          IMAGE="${REGISTRY}/my-org/github-runner"
           docker push "${IMAGE}:${RUNNER_VERSION}"
           docker push "${IMAGE}:latest"
+          docker push "${IMAGE}:sha-${GITHUB_SHA:0:7}"
+          echo "Published ${IMAGE}:${RUNNER_VERSION}" >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Log out of registry
+        if: always() && inputs.push
+        run: docker logout ${LOGIN_HOST:+"${LOGIN_HOST}"} || true

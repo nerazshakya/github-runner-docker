@@ -12,6 +12,8 @@
 #   -h  Show this help
 #
 # For GHES, set GITHUB_PAT env var with a PAT that has read:org scope.
+# For github.com the download is verified against GitHub's published SHA-256;
+# set REQUIRE_CHECKSUM=true to fail when no checksum is available.
 #
 # Examples:
 #   github.com:
@@ -67,6 +69,19 @@ if [[ -z "$GITHUB_HOST" ]]; then
   DOWNLOAD_URL="https://github.com/actions/runner/releases/download/v${VERSION}/${TAR}"
   echo ">>> Downloading runner v${VERSION} (linux-${ARCH}) from github.com..."
   curl -fsSL -o "$TAR" "$DOWNLOAD_URL"
+
+  # Verify the download against the SHA-256 digest GitHub publishes for the
+  # release asset. If the digest cannot be fetched (rate limit, older release)
+  # warn loudly, or fail when REQUIRE_CHECKSUM=true.
+  DIGEST=$(curl -fsSL "https://api.github.com/repos/actions/runner/releases/tags/v${VERSION}" 2>/dev/null \
+    | jq -r --arg n "$TAR" '.assets[]? | select(.name==$n) | .digest // empty' 2>/dev/null || true)
+  if [[ "$DIGEST" == sha256:* ]]; then
+    echo "${DIGEST#sha256:}  ${TAR}" | sha256sum -c -
+  elif [[ "${REQUIRE_CHECKSUM:-false}" == "true" ]]; then
+    echo "Error: no published checksum for ${TAR} and REQUIRE_CHECKSUM=true." >&2; exit 1
+  else
+    echo "WARNING: could not obtain a published SHA-256 for ${TAR}; download is NOT verified." >&2
+  fi
 
 else
   # GHES — query the API to get the signed download URL and checksum

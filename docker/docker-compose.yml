@@ -4,16 +4,19 @@
 #   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
 #   docker stack deploy -c docker-compose.yml -c docker-compose.prod.yml gh-runner-prod
 #
+# Normally driven by ../deploy.sh, which loads runner.env, adds the GitHub App
+# key override when APP_ID is set, and works on Swarm or plain Docker.
+#
 # Local:
-#   REPO_URL=https://github.com/org/repo ACCESS_TOKEN=ghp_xxx docker-compose up
-
-version: "3.12"
+#   RUNNER_IMAGE=docker.io/you/github-runner:latest RUNNER_SCOPE=repo \
+#   REPO_URL=https://github.com/org/repo ACCESS_TOKEN=ghp_xxx docker compose up
 
 services:
   runner:
-    # Set DOCKER_REGISTRY_URL as an env var when running this compose file
-    # e.g. DOCKER_REGISTRY_URL=yourcompany.registy.io docker-compose up
-    image: ${DOCKER_REGISTRY_URL}/my-org/github-runner:latest
+    # Full image reference, including registry host for non-Docker-Hub registries:
+    #   Docker Hub : you/github-runner:latest   (or docker.io/you/github-runner:latest)
+    #   Other      : registry.example.com/team/github-runner:latest
+    image: ${RUNNER_IMAGE:?set RUNNER_IMAGE (e.g. you/github-runner:latest) in runner.env}
 
     environment:
       # Auth: ACCESS_TOKEN (PAT) is recommended — token.sh fetches a fresh
@@ -23,8 +26,8 @@ services:
       RUNNER_TOKEN:     ${RUNNER_TOKEN:-}
 
       # GitHub App auth (preferred over a PAT). When APP_ID is set it wins.
-      # The private key is NOT an env var: mount it as a Swarm secret, see the
-      # commented "secrets" blocks at the bottom of this file.
+      # The private key is NOT an env var: deploy.sh adds docker-compose.app-swarm.yml
+      # or docker-compose.app-standalone.yml, which mount it at /run/secrets/gh_app_key.
       APP_ID:              ${APP_ID:-}
       APP_INSTALLATION_ID: ${APP_INSTALLATION_ID:-}
 
@@ -55,7 +58,7 @@ services:
       # carries one job's files into the next, which defeats ephemeral runners.
       # /_work now lives in the container's own filesystem, fresh per container.
       - runner-logs:/actions-runner/_diag           # persists logs after container exits
-      - /deployment:/deployment   
+      - ${DEPLOYMENT_DIR:-/deployment}:/deployment
 
     healthcheck:
       test: ["CMD", "/healthcheck.sh"]
@@ -64,14 +67,12 @@ services:
       start_period: 20s
       retries: 3
 
-    restart: on-failure:3
+    # Plain Docker only (Swarm uses deploy.restart_policy below). Must restart on
+    # exit code 0 too, because ephemeral runners exit 0 after every job.
+    restart: unless-stopped
 
     # Time for the SIGTERM trap to deregister before Docker sends SIGKILL.
     stop_grace_period: 30s
-
-    # GitHub App key (see the commented "secrets:" block at the bottom).
-    # secrets:
-    #   - gh_app_key
 
     deploy:
       replicas: 1
@@ -88,12 +89,3 @@ services:
 
 volumes:
   runner-logs:
-
-# GitHub App private key as a Swarm secret (create once per swarm):
-#   docker secret create gh_app_key ./app-private-key.pem
-# Then uncomment BOTH this block and the "secrets:" lines inside the runner
-# service above. The stack fails to deploy if the secret does not exist.
-#
-# secrets:
-#   gh_app_key:
-#     external: true
