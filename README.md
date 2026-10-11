@@ -198,9 +198,9 @@ registry's `docker login` accepts (username + API token).
 | `RUNNER_VERSION` | Variable | Optional pinned runner version |
 | `CI_RUNNER_LABELS` | Variable | Optional JSON array for `runs-on`. Default `["ubuntu-latest"]`. Set e.g. `["self-hosted","linux"]` on GHES. |
 | `RUNNER_GITHUB_HOST`, `RUNNER_ORG_NAME` | Variables | GHES only: where to download the runner from |
-| `GH_PAT_V1` | Secret | GHES only: downloads the runner binary at build time. Also used by the stale-runner cleanup workflow. |
+| `GH_PAT` | Secret | GHES only: downloads the runner binary at build time. Also used by the stale-runner cleanup workflow. |
 
-`GH_PAT_V1` reaches the build as a **BuildKit secret**, never a build arg,
+`GH_PAT` reaches the build as a **BuildKit secret**, never a build arg,
 because build args are recorded in the image history. The workflow uses plain
 `docker` commands and only `actions/checkout`, so it works on a GHES server
 that does not mirror marketplace actions.
@@ -493,7 +493,7 @@ after abrupt kills (host crash, `SIGKILL`). Two things handle that:
   scope. Works with a PAT or a GitHub App. Skipped for ephemeral runners, where
   a sibling that has registered but not yet connected looks "offline" and could
   be deleted by mistake.
-- **`cleanup-stale-runners.yml`**, daily 03:00 UTC, needs the `GH_PAT_V1`
+- **`cleanup-stale-runners.yml`**, daily 03:00 UTC, needs the `GH_PAT`
   secret. Only touches runners named `dev-runner-`, `uat-runner-` or
   `prod-runner-` (edit `RUNNER_NAME_PREFIXES`). **Actions > Cleanup Stale
   Runners > Run workflow** with `dry_run` ticked shows what would go. It runs on

@@ -8,7 +8,7 @@
 #
 # Logic lives in .github/scripts/cleanup-stale-runners.sh.
 #
-# Secret: GH_PAT_V1 must be allowed to manage org runners (admin:org, or a
+# Secret: GH_PAT must be allowed to manage org runners (admin:org, or a
 # GitHub App token with the Self-hosted runners permission).
 #
 # Caveat: this job runs on a runner. If every runner is down it cannot run.
@@ -36,7 +36,7 @@ jobs:
     env:
       API_URL: ${{ github.api_url }}
       ORG: ${{ github.repository_owner }}
-      TOKEN: ${{ secrets.GH_PAT_V1 }}
+      TOKEN: ${{ secrets.GH_PAT }}
       RUNNER_NAME_PREFIXES: "dev-runner- uat-runner- prod-runner-"
       DRY_RUN: ${{ inputs.dry_run && 'true' || 'false' }}
     steps:

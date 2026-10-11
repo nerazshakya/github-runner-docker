@@ -58,7 +58,7 @@ args=(--no-cache -f docker/Dockerfile
 
 if [[ -n "${GH_HOST:-}" ]]; then
   [[ -n "${ORG:-}" ]]        || { echo "org_name is required when github_host is set" >&2; exit 1; }
-  [[ -n "${GITHUB_PAT:-}" ]] || { echo "GH_PAT_V1 is required for a GHES build" >&2; exit 1; }
+  [[ -n "${GITHUB_PAT:-}" ]] || { echo "GH_PAT is required for a GHES build" >&2; exit 1; }
   args+=(--build-arg "GITHUB_HOST=${GH_HOST}" --build-arg "ORG_NAME=${ORG}"
          --secret "id=gh_pat,env=GITHUB_PAT")
 fi
@@ -68,7 +68,7 @@ docker build "${args[@]}" .
 # --- 4. token must not be in the image history ------------------------------
 hist=$(docker history --no-trunc "${image}:${RUNNER_VERSION}")
 if [[ -n "${GITHUB_PAT:-}" ]] && grep -qF -- "${GITHUB_PAT}" <<<"${hist}"; then
-  echo "FAIL: GH_PAT_V1 value found in image history. Not pushing." >&2; exit 1
+  echo "FAIL: GH_PAT value found in image history. Not pushing." >&2; exit 1
 fi
 if grep -qE 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}' <<<"${hist}"; then
   echo "FAIL: something that looks like a GitHub token is in the image history." >&2; exit 1

@@ -14,9 +14,9 @@
 #                                            (default ["ubuntu-latest"])
 # Repo secrets   : DOCKER_REGISTRY_TOKEN  registry access token (Docker Hub: a
 #                                            Personal Access Token with Read & Write)
-#                  GH_PAT_V1                 only for GHES builds: downloads the runner binary
+#                  GH_PAT                 only for GHES builds: downloads the runner binary
 #
-# GH_PAT_V1 reaches the build as a BuildKit secret. It must never be a build
+# GH_PAT reaches the build as a BuildKit secret. It must never be a build
 # arg, because build args are stored in the image history.
 name: Build Runner Image
 
@@ -50,7 +50,7 @@ on:
     secrets:
       DOCKER_REGISTRY_TOKEN:
         required: false
-      GH_PAT_V1:
+      GH_PAT:
         required: false
 
 permissions:
@@ -74,7 +74,7 @@ jobs:
           REGISTRY_TOKEN: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
           GH_HOST: ${{ inputs.github_host }}
           ORG: ${{ inputs.org_name }}
-          GITHUB_PAT: ${{ secrets.GH_PAT_V1 }}
+          GITHUB_PAT: ${{ secrets.GH_PAT }}
           SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
           REVISION: ${{ github.sha }}
         run: bash .github/scripts/build-and-push.sh

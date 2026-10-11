@@ -81,4 +81,4 @@ jobs:
       push: ${{ github.event_name != 'pull_request' }}
     secrets:
       DOCKER_REGISTRY_TOKEN: ${{ secrets.DOCKER_REGISTRY_TOKEN }}
-      GH_PAT_V1: ${{ secrets.GH_PAT_V1 }}
+      GH_PAT: ${{ secrets.GH_PAT }}

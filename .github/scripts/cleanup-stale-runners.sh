@@ -6,7 +6,7 @@
 #      DRY_RUN (true = list only)
 set -euo pipefail
 
-[[ -n "${TOKEN:-}" ]] || { echo "GH_PAT_V1 secret is not set"; exit 1; }
+[[ -n "${TOKEN:-}" ]] || { echo "GH_PAT secret is not set"; exit 1; }
 : "${API_URL:?}" "${ORG:?}" "${RUNNER_NAME_PREFIXES:?}"
 
 api="${API_URL}/orgs/${ORG}/actions/runners"
