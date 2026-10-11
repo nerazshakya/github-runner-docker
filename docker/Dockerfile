@@ -8,6 +8,9 @@ ARG TARGETPLATFORM="linux/amd64"
 ARG GITHUB_HOST=""
 # Only needed with GITHUB_HOST (GHES): the org whose runner download is queried.
 ARG ORG_NAME=""
+# true = fail the build if the runner download cannot be verified against
+# GitHub's published SHA-256 (github.com builds). Recommended once a build passes.
+ARG REQUIRE_CHECKSUM="false"
 # GITHUB_PAT is deliberately NOT an ARG. Build args are recorded in the image
 # history (docker history --no-trunc) and the image gets pushed to the registry.
 # Pass it as a BuildKit secret instead:
@@ -55,7 +58,7 @@ COPY scripts/install_runner.sh .
 RUN --mount=type=secret,id=gh_pat,required=false \
     chmod +x install_runner.sh \
     && if [ -f /run/secrets/gh_pat ]; then GITHUB_PAT="$(cat /run/secrets/gh_pat)"; export GITHUB_PAT; fi \
-    && ./install_runner.sh \
+    && REQUIRE_CHECKSUM="${REQUIRE_CHECKSUM}" ./install_runner.sh \
         -v "${GH_RUNNER_VERSION}" \
         -p "${TARGETPLATFORM}" \
         -g "${GITHUB_HOST}" \

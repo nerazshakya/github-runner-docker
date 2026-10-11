@@ -18,6 +18,7 @@
 #   REGISTRY_TOKEN   registry access token (required to push)
 #   GH_HOST, ORG     GHES only: host to download the runner from, and its org
 #   GITHUB_PAT       GHES only: token for that download (BuildKit secret, never a build arg)
+#   REQUIRE_CHECKSUM  true = fail the build if the runner download cannot be verified
 #   SOURCE_URL, REVISION, GITHUB_SHA   used for image labels and the sha tag
 set -euo pipefail
 
@@ -55,6 +56,8 @@ args=(--no-cache -f docker/Dockerfile
       --label "org.opencontainers.image.version=${RUNNER_VERSION}"
       --label "org.opencontainers.image.source=${SOURCE_URL:-}"
       --label "org.opencontainers.image.revision=${REVISION:-}")
+
+[[ -n "${REQUIRE_CHECKSUM:-}" ]] && args+=(--build-arg "REQUIRE_CHECKSUM=${REQUIRE_CHECKSUM}")
 
 if [[ -n "${GH_HOST:-}" ]]; then
   [[ -n "${ORG:-}" ]]        || { echo "org_name is required when github_host is set" >&2; exit 1; }

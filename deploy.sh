@@ -90,7 +90,10 @@ load_env() {
   Create it with:  $PROG init -e $ENVF   (or pass -e /path/to/runner.env)"
   local mode line key val
   mode=$(stat -c '%a' "$ENVF" 2>/dev/null || stat -f '%Lp' "$ENVF" 2>/dev/null || echo 600)
-  [[ "$mode" =~ ^[0-7]*00$ ]] || warn "$ENVF is accessible by group/others (mode $mode). Run: chmod 600 $ENVF"
+  if ! [[ "$mode" =~ ^[0-7]*00$ ]]; then
+    if chmod 600 "$ENVF" 2>/dev/null; then info "Tightened $ENVF permissions to 600 (was $mode)"
+    else warn "$ENVF is accessible by group/others (mode $mode) and could not be fixed. Run: chmod 600 $ENVF"; fi
+  fi
   case "$(cd "$(dirname "$ENVF")" && pwd)/" in
     /deployment/*) warn "$ENVF is under /deployment, which is mounted into every runner. Move it (e.g. /etc/gh-runner/)." ;;
   esac

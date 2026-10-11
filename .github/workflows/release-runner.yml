@@ -1,13 +1,14 @@
 # Build and publish the runner image.
 #
 # Triggers
-#   release (published)  builds and PUBLISHES. The release tag (e.g. v1.4.0)
-#                        becomes an extra image tag.
+#   release (published)  builds and PUBLISHES. Tag the release with the runner
+#                        version (e.g. 2.338.0) to build that runner version.
 #   pull_request         builds and tests only (nothing is pushed; fork PRs skipped)
 #   workflow_dispatch    manual: Actions > Release Runner Image > Run workflow
 #
-# Runner version: dispatch input, else repo variable RUNNER_VERSION, else the
-# latest actions/runner release (see .github/scripts/resolve-version.sh).
+# Runner version: dispatch input, else a version-shaped release tag, else repo
+# variable RUNNER_VERSION, else the latest actions/runner release
+# (see .github/scripts/resolve-version.sh).
 # Pin RUNNER_VERSION for reproducible builds.
 #
 # github.com is the default download source. For GHES set the repo variables

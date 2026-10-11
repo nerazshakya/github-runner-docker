@@ -10,6 +10,8 @@
 #                                            registry host, e.g. registry.example.com
 #                  DOCKER_IMAGE_NAME         optional, e.g. myorg/github-runner
 #                                            (default: <DOCKER_REGISTRY_USER>/github-runner)
+#                  REQUIRE_CHECKSUM          optional, true = fail the build if the runner download
+#                                            cannot be verified against GitHub's SHA-256
 #                  CI_RUNNER_LABELS          optional JSON array for runs-on
 #                                            (default ["ubuntu-latest"])
 # Repo secrets   : DOCKER_REGISTRY_TOKEN  registry access token (Docker Hub: a
@@ -50,7 +52,7 @@ on:
     secrets:
       DOCKER_REGISTRY_TOKEN:
         required: false
-      DOCKER_REGISTRY_USER: 
+      DOCKER_REGISTRY_USER:
         required: false
       GH_PAT:
         required: false
@@ -77,6 +79,7 @@ jobs:
           GH_HOST: ${{ inputs.github_host }}
           ORG: ${{ inputs.org_name }}
           GITHUB_PAT: ${{ secrets.GH_PAT }}
+          REQUIRE_CHECKSUM: ${{ vars.REQUIRE_CHECKSUM }}
           SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
           REVISION: ${{ github.sha }}
         run: bash .github/scripts/build-and-push.sh

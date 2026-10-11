@@ -1,0 +1,12 @@
+# Weekly pull requests that update the GitHub Actions used by the workflows and
+# the base image in docker/Dockerfile, so security fixes are not missed.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly

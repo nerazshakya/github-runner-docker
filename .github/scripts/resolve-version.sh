@@ -3,23 +3,30 @@
 # to publish. Called by release-runner.yml.
 #
 # Runner version, first match wins:
-#   1. REQUESTED   manual dispatch input
-#   2. PINNED      repo variable RUNNER_VERSION
-#   3. latest      newest actions/runner release (looked up on github.com)
+#   1. REQUESTED     manual dispatch input
+#   2. RELEASE_TAG   when the GitHub release tag is a version like 2.338.0 or
+#                    v2.338.0, that IS the runner version to build
+#   3. PINNED        repo variable RUNNER_VERSION
+#   4. latest        newest actions/runner release (looked up on github.com)
 #
-# RELEASE_TAG (the tag of the GitHub release that triggered the run, e.g. v1.4.0)
-# is NOT the runner version: it becomes an extra image tag, so release v1.4.0
-# publishes <image>:<runner-version>, :latest, :sha-<commit> and :v1.4.0.
+# A release tag that is not a version (e.g. "stable-1") does not select the
+# runner version; it is published as an extra image tag instead.
 #
 # Outputs (written to $GITHUB_OUTPUT, or printed when run by hand):
-#   version      runner version, e.g. 2.324.0
-#   extra_tag    sanitized release tag, or empty
+#   version      runner version, e.g. 2.338.0
+#   extra_tag    sanitized release tag when it differs from the version, else empty
 #
 # Env: REQUESTED, PINNED, RELEASE_TAG (all optional)
 set -euo pipefail
 
 out="${GITHUB_OUTPUT:-/dev/stdout}"
-version="${REQUESTED:-${PINNED:-latest}}"
+semver='^[0-9]+\.[0-9]+\.[0-9]+$'
+tag_version="${RELEASE_TAG:-}"; tag_version="${tag_version#v}"
+
+if   [[ -n "${REQUESTED:-}" ]];         then version="${REQUESTED}"
+elif [[ "${tag_version}" =~ ${semver} ]]; then version="${tag_version}"
+else                                         version="${PINNED:-latest}"
+fi
 
 if [[ "${version}" == "latest" ]]; then
   version=$(curl -fsS --max-time 30 https://api.github.com/repos/actions/runner/releases/latest \
@@ -31,7 +38,7 @@ if [[ "${version}" == "latest" ]]; then
   }
 fi
 
-[[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+[[ "${version}" =~ ${semver} ]] || {
   echo "Invalid runner version '${version}' (want e.g. 2.324.0)." >&2
   exit 1
 }

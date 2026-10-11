@@ -1,0 +1,5 @@
+# The image only needs scripts/. Everything else (including any runner.env or
+# .pem key that happens to sit in your checkout) is never sent to the Docker
+# daemon as build context.
+*
+!scripts

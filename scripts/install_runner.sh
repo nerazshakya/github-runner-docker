@@ -13,7 +13,7 @@
 #
 # For GHES, set GITHUB_PAT env var with a PAT that has read:org scope.
 # For github.com the download is verified against GitHub's published SHA-256;
-# set REQUIRE_CHECKSUM=true to fail when no checksum is available.
+# set REQUIRE_CHECKSUM=true to fail the build when no checksum is available.
 #
 # Examples:
 #   github.com:
@@ -70,13 +70,20 @@ if [[ -z "$GITHUB_HOST" ]]; then
   echo ">>> Downloading runner v${VERSION} (linux-${ARCH}) from github.com..."
   curl -fsSL -o "$TAR" "$DOWNLOAD_URL"
 
-  # Verify the download against the SHA-256 digest GitHub publishes for the
-  # release asset. If the digest cannot be fetched (rate limit, older release)
-  # warn loudly, or fail when REQUIRE_CHECKSUM=true.
-  DIGEST=$(curl -fsSL "https://api.github.com/repos/actions/runner/releases/tags/v${VERSION}" 2>/dev/null \
-    | jq -r --arg n "$TAR" '.assets[]? | select(.name==$n) | .digest // empty' 2>/dev/null || true)
-  if [[ "$DIGEST" == sha256:* ]]; then
-    echo "${DIGEST#sha256:}  ${TAR}" | sha256sum -c -
+  # Verify the download against the SHA-256 GitHub publishes for the release:
+  # the asset "digest" field, or failing that the hash in the release notes
+  # (<!-- BEGIN SHA linux-x64 -->HASH<!-- END SHA linux-x64 -->).
+  # If neither can be fetched (rate limit, old release) warn loudly, or fail
+  # when REQUIRE_CHECKSUM=true.
+  REL=$(curl -fsSL "https://api.github.com/repos/actions/runner/releases/tags/v${VERSION}" 2>/dev/null || true)
+  SHA=$(jq -r --arg n "$TAR" '.assets[]? | select(.name==$n) | .digest // empty' <<<"$REL" 2>/dev/null || true)
+  SHA="${SHA#sha256:}"
+  if [[ ! "$SHA" =~ ^[0-9a-f]{64}$ ]]; then
+    SHA=$(jq -r '.body // empty' <<<"$REL" 2>/dev/null \
+          | grep -oE "BEGIN SHA linux-${ARCH} -->[0-9a-f]{64}" | grep -oE '[0-9a-f]{64}' | head -1 || true)
+  fi
+  if [[ "$SHA" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "${SHA}  ${TAR}" | sha256sum -c -
   elif [[ "${REQUIRE_CHECKSUM:-false}" == "true" ]]; then
     echo "Error: no published checksum for ${TAR} and REQUIRE_CHECKSUM=true." >&2; exit 1
   else

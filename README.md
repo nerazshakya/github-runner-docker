@@ -10,6 +10,12 @@ Swarm** or **plain Docker**.
 - `deploy.sh` takes you from an empty host to healthy, registered runners:
   config file, credential check, pull, start, wait.
 
+> **Use at your own risk.** This project is free software under the
+> [MIT License](LICENSE) and comes with **no warranty of any kind**. Self-hosted
+> runners run your workflow code with real access to your host and credentials.
+> You are responsible for how you deploy and secure them. Read the
+> [Security Model](#security-model) first.
+
 Docker access uses a **host socket mount**: no Docker daemon inside the
 container, `docker` commands in jobs talk to the host's daemon. Read the
 [Security Model](#security-model) before sharing these runners.
@@ -66,6 +72,10 @@ then show up under **Settings > Actions > Runners**.
 │   └── healthcheck.sh              # Confirms Runner.Listener is alive
 ├── deploy.sh                       # init / check / deploy / status / logs / scale / remove
 ├── runner.env.template             # Template for the runner.env secrets file
+├── .dockerignore                   # Only scripts/ is sent as Docker build context
+├── .github/dependabot.yml          # Weekly updates for Actions and the base image
+├── LICENSE                         # MIT
+├── SECURITY.md                     # How to report a vulnerability
 └── README.md
 ```
 
@@ -138,7 +148,7 @@ for Swarm). Do not add `max_attempts`: it would stop the pool after N jobs.
 
 | Event | What happens |
 | --- | --- |
-| **GitHub release published** (Releases > Draft a new release > Publish) | Build, test, **publish**. The release tag (e.g. `v1.4.0`) becomes an extra image tag. |
+| **GitHub release published** (Releases > Draft a new release > Publish) | Build, test, **publish**. Tag the release with the runner version (e.g. `2.338.0`) to build that version. |
 | Pull request touching image files (same repo only) | Build and test, **nothing is pushed** |
 | **Actions > Release Runner Image > Run workflow** | Build, test, publish, with optional version/host inputs |
 
@@ -151,13 +161,14 @@ that no token leaked into the image history (fails before the push), smoke test
 (runner, Docker CLI, scripts, fail-fast on missing config), push, and always
 logs out.
 
-Runner version (`resolve-version.sh`): the dispatch input, else the
-`RUNNER_VERSION` variable, else the latest `actions/runner` release. Pin
-`RUNNER_VERSION` for reproducible builds. The release tag is **not** the runner
-version; it is only an additional image tag. For github.com, the download is verified against GitHub's published
-SHA-256.
+Runner version (`resolve-version.sh`), first match wins: the dispatch input, a
+release tag shaped like a version (`2.338.0` or `v2.338.0`), the `RUNNER_VERSION`
+variable, then the latest `actions/runner` release. A release tag that is not a
+version (e.g. `stable-1`) is published as an extra image tag. Pin the version
+(release tag or `RUNNER_VERSION`) for reproducible builds. For github.com, the
+download is verified against GitHub's published SHA-256.
 
-Published tags: `<runner-version>`, `latest`, `sha-<commit>`, and the release tag when triggered by a release.
+Published tags: `<runner-version>`, `latest`, `sha-<commit>`, and the release tag when it differs from the version.
 
 ### Docker Hub setup
 
@@ -196,6 +207,7 @@ registry's `docker login` accepts (username + API token).
 | `DOCKER_REGISTRY_URL` | Variable | Empty/`docker.io` = Docker Hub, else registry host |
 | `DOCKER_IMAGE_NAME` | Variable | Optional image path |
 | `RUNNER_VERSION` | Variable | Optional pinned runner version |
+| `REQUIRE_CHECKSUM` | Variable | Optional. `true` = fail the build if the runner download cannot be verified against GitHub's SHA-256. Recommended once a build has passed. |
 | `CI_RUNNER_LABELS` | Variable | Optional JSON array for `runs-on`. Default `["ubuntu-latest"]`. Set e.g. `["self-hosted","linux"]` on GHES. |
 | `RUNNER_GITHUB_HOST`, `RUNNER_ORG_NAME` | Variables | GHES only: where to download the runner from |
 | `GH_PAT` | Secret | GHES only: downloads the runner binary at build time. Also used by the stale-runner cleanup workflow. |
@@ -519,6 +531,27 @@ after abrupt kills (host crash, `SIGKILL`). Two things handle that:
 - **Secrets stay out of the image and out of `ps`.** Build secrets use BuildKit
   secrets and the history is scanned before the push. `token.sh` hands tokens
   to `curl` on stdin. `deploy.sh dry-run` redacts tokens.
+- **Supply chain.** The runner download is verified against GitHub's published
+  SHA-256 (`REQUIRE_CHECKSUM=true` makes that mandatory). `.dockerignore`
+  keeps everything except `scripts/` out of the build context, so a stray
+  `runner.env` or `.pem` is never sent to the daemon. Dependabot opens weekly
+  PRs for the GitHub Actions and the base image. Pin `RUNNER_VERSION` (or tag
+  releases with the version) so builds are reproducible, and review Dependabot
+  PRs rather than auto-merging them.
+- **CI safety.** Workflows run with `contents: read` only, pass inputs through
+  environment variables (no expression injection into shell), skip pull
+  requests from forks, and never push on a pull request. If you point
+  `CI_RUNNER_LABELS` at self-hosted runners, do not allow untrusted PRs to
+  reach them.
+- **`deploy.sh` and the env file.** `runner.env` is parsed, not executed, and
+  `deploy.sh` tightens its permissions to `600` if they are looser. A private
+  image's pull login is stored by Docker in `~/.docker/config.json` on the
+  host; use a read-only token.
+- **What this does not fix.** The container runs as root and mounts the host
+  Docker socket. That is what lets jobs run `docker` commands, and it also means
+  a malicious job controls the host. Hardening flags cannot remove that. For
+  untrusted code, use separate hosts or VMs, ephemeral runners and a runner
+  group restricted to specific repositories.
 - **Use separate tokens.** CI push token (read & write) for publishing; a
   read-only pull token for hosts; a runner-management credential for
   registration. No single token should do all three.
@@ -570,3 +603,16 @@ not names.
 the container on the first failure. It retries 3 times with backoff and
 timeouts. 401, 403 and 404 are configuration errors and fail immediately with
 GitHub's own message.
+
+---
+
+## License and disclaimer
+
+Released under the [MIT License](LICENSE): free to use, copy, modify and
+distribute, including commercially.
+
+**Use at your own risk.** The software is provided "as is", without warranty of
+any kind, and the authors are not liable for any damage, data loss, security
+incident, or cost arising from its use. That includes the images you build from
+it and anything your workflows do on the runners. To report a security problem,
+see [SECURITY.md](SECURITY.md).
